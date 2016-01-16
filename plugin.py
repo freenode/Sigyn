@@ -417,8 +417,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     noIgnore = True
     
     def __init__(self, irc):
-        self.__parent = super(Sigyn, self)
-        self.__parent.__init__(irc)
         callbacks.Plugin.__init__(self, irc)
         plugins.ChannelDBHandler.__init__(self)
         self._ircs = ircutils.IrcDict()
