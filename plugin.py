@@ -167,7 +167,7 @@ def prefixToMask (irc,prefix):
     return cache[prefix]
 
 def compareString (a,b):
-    # return 0 to 1 float percent of similarity ( 0.85 seems to be a good average )
+    """return 0 to 1 float percent of similarity ( 0.85 seems to be a good average )"""
     if a == b:
         return 1
     sa, sb = set(a), set(b)
@@ -178,7 +178,9 @@ def compareString (a,b):
     return jacc
 
 def largestString (s1,s2):
-    # returns largest pattern available in 2 strings
+    """return largest pattern available in 2 strings"""
+    # From https://en.wikibooks.org/wiki/Algorithm_Implementation/Strings/Longest_common_substring#Python2
+    # License: CC BY-SA
     m = [[0] * (1 + len(s2)) for i in xrange(1 + len(s1))]
     longest, x_longest = 0, 0
     for x in xrange(1, 1 + len(s1)):
