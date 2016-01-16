@@ -452,7 +452,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 irc.reply('%s is not monitored' % channel)
         else:
             irc.reply('%s active patterns and %s channels monitored' % (len(i.patterns),len(i.channels)))
-        self.log.debug(format('%r',i))
+        self.log.debug('%r',i)
     state = wrap(state,['owner',optional('channel'),optional('nick')])
     
     def defcon (self,irc,msg,args):
@@ -725,7 +725,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if mask in i.klines:
             return
         if duration < 0:
-            self.log.debug('Ignored kline %s due to no duration' % (mask))
+            self.log.debug('Ignored kline %s due to no duration', mask)
             return
         if not klineMessage:
             klineMessage = self.registryValue('klineMessage')
@@ -832,7 +832,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     removes.append(k)
             for k in removes:
                 del i.queues['sasl'][k]
-                self.log.debug('Sasl, removing queue %s' % k)
+                self.log.debug('Sasl, removing queue %s', k)
         if self.registryValue('saslPermit') < 0:
             self.rmIrcQueueFor(irc,'sasl')
                         
@@ -861,7 +861,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.logChannel(irc,"INFO: netsplit mode desactivated")
                 i.netsplit = False
         if mask in i.klines:
-            self.log.debug('Ignoring %s (%s) - kline in progress' % (msg.prefix,mask))
+            self.log.debug('Ignoring %s (%s) - kline in progress', msg.prefix,mask)
             return
         isBanned = False
         for channel in targets.split(','):
@@ -1142,7 +1142,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         user = text.split('User ')[1].split(')')[0]
         user = user.replace('(','!').replace(')','').replace(' ','')
         if not ircutils.isUserHostmask(user):
-            self.log.debug('ERROR: handleJoinSnote %s is not a user hostmask (%s)' % (user,target))
+            self.log.debug('ERROR: handleJoinSnote %s is not a user hostmask (%s)', user,target)
             return
         protected = ircdb.makeChannelCapability(target, 'protected')
         if ircdb.checkCapability(user, protected):
@@ -1777,7 +1777,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 elif entry == '127.0.0.5':
                     message = 'Drone/Irc bot'
                     break
-        self.log.debug('digged %s --> %s --> %s' % (prefix,ip,message))
+        self.log.debug('digged %s --> %s --> %s', prefix,ip,message)
         if message:
             if not ip in i.digs:
                 i.digs[ip] = message
