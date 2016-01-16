@@ -167,7 +167,7 @@ def prefixToMask (irc,prefix):
     return cache[prefix]
 
 def compareString (a,b):
-    # return 0 to 1 float percent of similarity ( 0.85 seems to be a good average )
+    """return 0 to 1 float percent of similarity ( 0.85 seems to be a good average )"""
     if a == b:
         return 1
     sa, sb = set(a), set(b)
@@ -178,7 +178,9 @@ def compareString (a,b):
     return jacc
 
 def largestString (s1,s2):
-    # returns largest pattern available in 2 strings
+    """return largest pattern available in 2 strings"""
+    # From https://en.wikibooks.org/wiki/Algorithm_Implementation/Strings/Longest_common_substring#Python2
+    # License: CC BY-SA
     m = [[0] * (1 + len(s2)) for i in xrange(1 + len(s1))]
     longest, x_longest = 0, 0
     for x in xrange(1, 1 + len(s1)):
@@ -424,8 +426,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     
     def state (self,irc,msg,args,channel,nick):
         """[<channel>] [<nick>]
-        
-            returns state of the plugin, for optional <channel> and optional <nick>"""
+
+        returns state of the plugin, for optional <channel> and optional <nick>"""
         i = self.getIrc(irc)
         if channel:
             if channel in i.channels:
@@ -452,12 +454,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 irc.reply('%s is not monitored' % channel)
         else:
             irc.reply('%s active patterns and %s channels monitored' % (len(i.patterns),len(i.channels)))
-        self.log.debug(format('%r',i))
+        self.log.debug('%r',i)
     state = wrap(state,['owner',optional('channel'),optional('nick')])
     
     def defcon (self,irc,msg,args):
-        """
-            force bot to enter in defcon mode: lowered triggers limits, no ignore, kline of hosts in efnet's dnsbl, bot is less tolerant against abuse"""
+        """takes no arguments
+
+        force bot to enter in defcon mode: lowered triggers limits, no ignore, kline of hosts in efnet's dnsbl, bot is less tolerant against abuse"""
         i = self.getIrc(irc)
         if i.defcon:
             i.defcon = time.time()
@@ -469,8 +472,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     defcon = wrap(defcon,['owner'])
 
     def vacuum (self,irc,msg,args):
-        """
-        
+        """takes no arguments
+
         VACUUM the permanent patterns's database"""
         db = self.getDb(irc.network)
         c = db.cursor()
@@ -480,7 +483,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     vacuum = wrap(vacuum,['owner'])
 
     def rehash (self,irc,msg,args):
-        """
+        """takes no arguments
 
         clear plugin's state, buffers, cache etc"""
         cache = utils.structures.CacheDict(10000)
@@ -489,9 +492,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     clear = wrap(rehash,['owner'])
     
     def efnet (self,irc,msg,args,duration):
-        """<duration> in seconds
-        
-         kline on join user listed in efnet's dnsbl for <duration>"""
+        """<duration>
+
+         kline on join user listed in efnet's dnsbl for <duration> (in seconds)"""
         i = self.getIrc(irc)
         if i.efnet:
             i.efnet = time.time()+duration
@@ -504,7 +507,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def lspattern (self,irc,msg,args,optlist,pattern):
         """[--deep] <id|pattern>
-        
+
         returns list patterns which matchs pattern or info about pattern #id, use --deep to search on desactivated patterns"""
         i = self.getIrc(irc)
         deep = False
@@ -521,7 +524,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     
     def addpattern (self,irc,msg,args,limit,life,pattern):
         """<limit> <life> <pattern>
-        
+
         add a permanent <pattern> : kline after <limit> calls raised during <life> seconds,
         for immediate kline use limit 0"""
         i = self.getIrc(irc)
@@ -532,7 +535,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def addregexpattern (self,irc,msg,args,limit,life,pattern):
         """<limit> <life> /<pattern>/
-        
+
         add a permanent /<pattern>/ to kline after <limit> calls raised during <life> seconds,
         for immediate kline use limit 0"""
         i = self.getIrc(irc)
@@ -543,7 +546,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def editpattern (self,irc,msg,args,uid,limit,life,comment):
         """<id> <limit> <life> [<comment>]
-        
+
         edit #<id> with new <limit> <life> and <comment>"""
         i = self.getIrc(irc)
         result = i.edit(self.getDb(irc.network),uid,limit,life,comment)
@@ -559,7 +562,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def togglepattern (self,irc,msg,args,uid,toggle):
         """<id> <boolean>
-        
+
         activate or desactivate #<id>"""
         i = self.getIrc(irc)
         result = i.toggle(self.getDb(irc.network),uid,msg.prefix,toggle)
@@ -575,7 +578,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def lstmp (self,irc,msg,args,channel):
         """[<channel>]
-        
+
         returns temporary patterns for given channel"""
         i = self.getIrc(irc)
         if channel in i.channels:
@@ -634,8 +637,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     rmtmp = wrap(rmtmp,['op'])
 
     def oper (self,irc,msg,args):
-        """
-        
+        """takes no arguments
+
         ask bot to oper"""
         if len(self.registryValue('operatorNick')) and len(self.registryValue('operatorPassword')):
             irc.sendMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
@@ -725,7 +728,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if mask in i.klines:
             return
         if duration < 0:
-            self.log.debug('Ignored kline %s due to no duration' % (mask))
+            self.log.debug('Ignored kline %s due to no duration', mask)
             return
         if not klineMessage:
             klineMessage = self.registryValue('klineMessage')
@@ -832,7 +835,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     removes.append(k)
             for k in removes:
                 del i.queues['sasl'][k]
-                self.log.debug('Sasl, removing queue %s' % k)
+                self.log.debug('Sasl, removing queue %s', k)
         if self.registryValue('saslPermit') < 0:
             self.rmIrcQueueFor(irc,'sasl')
                         
@@ -861,7 +864,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.logChannel(irc,"INFO: netsplit mode desactivated")
                 i.netsplit = False
         if mask in i.klines:
-            self.log.debug('Ignoring %s (%s) - kline in progress' % (msg.prefix,mask))
+            self.log.debug('Ignoring %s (%s) - kline in progress', msg.prefix,mask)
             return
         isBanned = False
         for channel in targets.split(','):
@@ -1142,7 +1145,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         user = text.split('User ')[1].split(')')[0]
         user = user.replace('(','!').replace(')','').replace(' ','')
         if not ircutils.isUserHostmask(user):
-            self.log.debug('ERROR: handleJoinSnote %s is not a user hostmask (%s)' % (user,target))
+            self.log.debug('ERROR: handleJoinSnote %s is not a user hostmask (%s)', user,target)
             return
         protected = ircdb.makeChannelCapability(target, 'protected')
         if ircdb.checkCapability(user, protected):
@@ -1777,7 +1780,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 elif entry == '127.0.0.5':
                     message = 'Drone/Irc bot'
                     break
-        self.log.debug('digged %s --> %s --> %s' % (prefix,ip,message))
+        self.log.debug('digged %s --> %s --> %s', prefix,ip,message)
         if message:
             if not ip in i.digs:
                 i.digs[ip] = message
