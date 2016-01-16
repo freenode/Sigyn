@@ -526,8 +526,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         for immediate kline use limit 0"""
         i = self.getIrc(irc)
         result = i.add(self.getDb(irc.network),msg.prefix,pattern,limit,life,False)
+        self.logChannel(irc,'PATTERN: %s added #%s : "%s" %s/%ss' % (msg.nick,result,pattern,limit,life))
         irc.reply('#%s added' % result)
-        self.logChannel(irc,'PATTERN: %s added #%s : "%s" %s/%ss' % (msg.nick,result,pattern,limit,life)) 
     addpattern = wrap(addpattern,['owner','nonNegativeInt','positiveInt','text'])
 
     def addregexpattern (self,irc,msg,args,limit,life,pattern):
