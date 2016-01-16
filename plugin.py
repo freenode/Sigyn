@@ -1,4 +1,4 @@
-#!/usr/local/bin/python
+#!/usr/bin/env python
 #
 # -*- coding: utf-8 -*-
 
@@ -606,8 +606,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             elif chan.patterns.timeout != life:
                 chan.patterns.setTimeout(life)
             chan.patterns.enqueue(text)
-            irc.replySuccess()
             self.logChannel(irc,'PATTERN: [%s] added tmp "%s" for %ss by %s' % (channel,text,life,msg.nick))
+            irc.replySuccess()
         else:
             irc.reply('unknown channel')
     addtmp = wrap(addtmp,['op','text'])
@@ -765,7 +765,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if not kind in i.queues[key]:
             i.queues[key][kind] = utils.structures.TimeoutQueue(life)
         elif i.queues[key][kind].timeout != life:
-            queue.setTimeout(life)
+            i.queues[key][kind].setTimeout(life)
         return i.queues[key][kind]
 
     def rmIrcQueueFor (self,irc,key):
@@ -1879,7 +1879,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             for channel in channels:
                 if ircutils.isChannel(channel) and channel in irc.state.channels:
                     if channel in i.channels:
-                        self.clearChan(irc,channel)
+                        del i.channels[channel]
             return
         mask = prefixToMask(irc,msg.prefix)
         isBanned = False
@@ -1927,7 +1927,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         if target == irc.nick:
             if channel in i.channels:
-                self.clearChan(irc,channel)
+                del i.channels[channel]
         else:
             def rm ():
                 self.rmNick(irc,target)
