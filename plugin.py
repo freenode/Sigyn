@@ -680,9 +680,25 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self._ircs[irc.network].restore(self.getDb(irc.network))
             if len(self.registryValue('operatorNick')) and len(self.registryValue('operatorPassword')):
                 irc.sendMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
-            irc.queueMsg(ircmsgs.IrcMsg('CAP REQ extended-join'))
+            irc.queueMsg(ircmsgs.IrcMsg('CAP REQ :extended-join account-notify'))
         return self._ircs[irc.network]
     
+    def doAccount (self,irc,msg):
+        if ircutils.isUserHostmask(msg.prefix):
+            nick = ircutils.nickFromHostmask(msg.prefix)
+            acc = msg.args[0]
+            if acc == '*':
+                acc = None
+            for channel in irc.state.channels:
+                if irc.isChannel(channel):
+                    chan = self.getChan(irc,channel)
+                    if nick in chan.nicks:
+                        a = chan.nicks[msg.nick]
+                        if len(a) == 5:
+                            chan.nicks[msg.nick] = [a[0],a[1],a[2],a[3],acc]
+                        else:
+                            chan.nicks[msg.nick] = [a[0],a[1],a[2],'',acc]
+                
     def getChan (self,irc,channel):
         i = self.getIrc(irc)
         if not channel in i.channels:
@@ -1261,7 +1277,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if len(queue) > self.registryValue('alertOnWideKline'):
                 queue.reset()
                 if not key in i.queues[mask]:
-                    self.logChannel(irc,"NOTE: a kline similar to %s seems to hit more than %s users" % (mask.split('!')[1],self.registryValue('alertOnWideKline')))
+                    self.logChannel(irc,"NOTE: a kline similar to %s seems to hit more than %s users" % (mask,self.registryValue('alertOnWideKline')))
                     i.queues[mask][key] = time.time()
             def rct():
                 if mask in i.queues:
