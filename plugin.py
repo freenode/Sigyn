@@ -680,6 +680,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self._ircs[irc.network].restore(self.getDb(irc.network))
             if len(self.registryValue('operatorNick')) and len(self.registryValue('operatorPassword')):
                 irc.sendMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
+            irc.queueMsg(ircmsgs.IrcMsg('CAP REQ extended-join'))
         return self._ircs[irc.network]
     
     def getChan (self,irc,channel):
@@ -1241,6 +1242,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 
     def handleKline(self,irc,text):
         if self.registryValue('alertOnWideKline') > -1:
+            i = self.getIrc(irc)
             user = text.split('active for')[1]
             a = user[::-1]
             ar = a.split(']',1)
@@ -1255,18 +1257,18 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             mask = prefixToMask(irc,user)
             queue = self.getIrcQueueFor(irc,mask,'klineNote',7)
             queue.enqueue(user)
+            key = 'wideKlineAlert'
             if len(queue) > self.registryValue('alertOnWideKline'):
                 queue.reset()
-                key = 'wideKlineAlert'
                 if not key in i.queues[mask]:
                     self.logChannel(irc,"NOTE: a kline similar to %s seems to hit more than %s users" % (mask.split('!')[1],self.registryValue('alertOnWideKline')))
-                    def rct():
-                        if mask in i.queues:
-                            if key in i.queues[mask]:
-                                del i.queues[mask][key]
-                        self.rmIrcQueueFor(irc,mask)
                     i.queues[mask][key] = time.time()
-                    schedule.addEvent(rct,time.time()+self.registryValue('alertPeriod'))
+            def rct():
+                if mask in i.queues:
+                    if key in i.queues[mask]:
+                        del i.queues[mask][key]
+                self.rmIrcQueueFor(irc,mask)
+            schedule.addEvent(rct,time.time()+8)
                 
     def doNotice (self,irc,msg):
         (targets, text) = msg.args
