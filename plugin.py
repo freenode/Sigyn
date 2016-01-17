@@ -1477,7 +1477,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if len(p) > self.registryValue('computedPattern',channel=channel):
                         if len(p) > len(candidate):
                             candidate = p
-                    elif len(p) > self.registryValue('%sPattern' % kind,channel=channel) and patterns[p] > self.registryValue('%sCount' % kind,channel=channel):
+                    elif len(p) > self.registryValue('computedPattern',channel=channel) and patterns[p] > self.registryValue('%sCount' % kind,channel=channel):
                         if len(p) > len(candidate):
                             candidate = p
                     elif len(p) * c > self.registryValue('computedPattern',channel=channel):
@@ -1567,7 +1567,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if not found:
                         pattern = pattern.strip()
                         chan.patterns.enqueue(pattern)
-                        self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,candidate,self.registryValue('computedPatternLife',channel=channel),kind))
+                        self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,pattern,self.registryValue('computedPatternLife',channel=channel),kind))
                         users = {}
                         users[mask] = True
                         for u in chan.logs:
