@@ -1074,6 +1074,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             # channel being flooded by someone
             limit = self.registryValue('channelFloodPermit')
             life = self.registryValue('channelFloodLife')
+            key = 'snoteFloodAlerted'
             if limit > -1:
                 if not self.registryValue('ignoreChannel',target):
                     protected = ircdb.makeChannelCapability(target, 'protected')
@@ -1090,15 +1091,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         if len(queue) > limit:
                             users = list(queue)
                             queue.reset()
-                            key = 'snoteFloodAlerted'
                             if not key in i.queues[target]:
                                 self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
+                                i.queues[target][key] = time.time() + self.registryValue('alertPeriod')
                                 def rc():
                                     if target in i.queues:
                                         if key in i.queues[target]:
                                             del i.queues[target][key]
+                                i.queues[target][key] = time.time()
                                 schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
-                            i.queues[target][key] = time.time()
         else:
             # nick being flood by someone
             limit = self.registryValue('userFloodPermit')
@@ -1122,8 +1123,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             if target in i.queues:
                                 if key in i.queues[target]:
                                     del i.queues[target][key]
-                        schedule.addEvent(ru,time.time()+self.registryValue('alertPeriod'))
                         i.queues[target][key] = time.time()
+                        schedule.addEvent(ru,time.time()+self.registryValue('alertPeriod'))
                     #else:
                         #reason = 'flooded %s (snote)' % target
                         #for spammer in users:
@@ -1143,7 +1144,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         user = text.split('User ')[1].split(')')[0]
         user = user.replace('(','!').replace(')','').replace(' ','')
         if not ircutils.isUserHostmask(user):
-            self.log.debug('ERROR: handleJoinSnote %s is not a user hostmask (%s)', user,target)
             return
         protected = ircdb.makeChannelCapability(target, 'protected')
         if ircdb.checkCapability(user, protected):
@@ -1167,16 +1167,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if target in i.queues:
                         if key in i.queues[target]:
                             del i.queues[target][key]
-                schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
                 i.queues[target][key] = time.time()
-        else:
-            t = True
-            #if key in i.queues[target]:
-                #reason = 'join/part in %s (snote)' % target
-                #mask = prefixToMask(irc,user)
-                #log =  log = 'BAD: %s join/part in %s (snote) -> %s' (user,target,mask)
-                #(sn,si,sh) = ircutils.splitHostmask(user)
-                #self.ban(irc,sn,user,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log)
+                schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
         queue = self.getIrcQueueFor(irc,user,'snoteJoin',life)
         stored = False
         for u in queue:
@@ -1194,8 +1186,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if user in i.queues:
                         if key in i.queues[user]:
                             del i.queues[user][key]
-                schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
                 i.queues[user][key] = time.time()
+                schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
                 
     def handleIdSnote (self,irc,text):
         target = text.split('failed login attempts to ')[1].split('.')[0].strip()
@@ -1226,8 +1218,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if user in i.queues:
                         if key in i.queues[user]:
                             del i.queues[user][key]
-                schedule.addEvent(rcu,time.time()+self.registryValue('alertPeriod'))
                 i.queues[user][key] = time.time()
+                schedule.addEvent(rcu,time.time()+self.registryValue('alertPeriod'))
         # user receive nickserv's id
         queue = self.getIrcQueueFor(irc,target,'snoteId',life)
         queue.enqueue(user)
@@ -1244,9 +1236,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if target in i.queues:
                         if key in i.queues[target]:
                             del i.queues[target][key]
-                schedule.addEvent(rct,time.time()+self.registryValue('alertPeriod'))
                 i.queues[target][key] = time.time()
-
+                schedule.addEvent(rct,time.time()+self.registryValue('alertPeriod'))
+                
     def handleKline(self,irc,text):
         if self.registryValue('alertOnWideKline') > -1:
             user = text.split('active for')[1]
@@ -1269,12 +1261,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if not key in i.queues[mask]:
                     self.logChannel(irc,"NOTE: a kline similar to %s seems to hit more than %s users" % (mask.split('!')[1],self.registryValue('alertOnWideKline')))
                     def rct():
-                        if key in i.queues:
+                        if mask in i.queues:
                             if key in i.queues[mask]:
                                 del i.queues[mask][key]
                         self.rmIrcQueueFor(irc,mask)
+                    i.queues[mask][key] = time.time()
                     schedule.addEvent(rct,time.time()+self.registryValue('alertPeriod'))
-                    i.queues[target][key] = time.time()
                 
     def doNotice (self,irc,msg):
         (targets, text) = msg.args
@@ -1344,7 +1336,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             return False
         i = self.getIrc(irc)
         if i.netsplit:
-            kinds = ['flood','lowFlood','cycle','nick','lowRepeat','lowMassRepeat','brokenPermit']
+            kinds = ['flood','lowFlood','cycle','nick','lowRepeat','lowMassRepeat','broken']
             if kind in kinds:
                 return False
         life = self.registryValue('%sLife' % kind,channel=channel)
@@ -1379,33 +1371,16 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         return False
 
     def isChannelHilight (self,irc,msg,channel,mask,text):
-        limit = self.registryValue('hilightNick',channel=channel)
-        if limit < 0:
-            return False
-        count = 0
-        users = []
-        if channel in irc.state.channels and irc.isChannel(channel):
-            for u in list(irc.state.channels[channel].users):
-                if u == 'ChanServ' or u == msg.nick:
-                    continue
-                users.append(u.lower())
-        flag = False
-        us = {}
-        for user in users:
-            if len(user) > 2:
-                if not user in us and user in text:
-                    us[user] = True
-                    count = count + 1
-                    if count > limit:
-                        flag = True
-                        break
-        result = False
-        if flag:
-            result = self.isBadOnChannel(irc,channel,'hilight',mask)
-        return result
-
+        return self.isHilight(irc,msg,channel,mask,text,False)
+        
     def isChannelLowHilight (self,irc,msg,channel,mask,text):
-        limit = self.registryValue('lowHilightNick',channel=channel)
+        return self.isHilight(irc,msg,channel,mask,text,True)
+        
+    def isHilight (self,irc,msg,channel,mask,text,low):
+        kind = 'hilight'
+        if low:
+            kind = 'lowHilight'
+        limit = self.registryValue('%sNick' % kind,channel=channel)
         if limit < 0:
             return False
         count = 0
@@ -1427,95 +1402,35 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         break
         result = False
         if flag:
-            result = self.isBadOnChannel(irc,channel,'lowHilight',mask)
+            result = self.isBadOnChannel(irc,channel,kind,mask)
         return result
 
     def isChannelRepeat (self,irc,msg,channel,mask,text):
-        limit = self.registryValue('repeatPermit',channel=channel)
-        if limit < 0:
-            return False
-        chan = self.getChan(irc,channel)
-        life = self.registryValue('repeatLife',channel=channel)
-        if not mask in chan.logs:
-            chan.logs[mask] = utils.structures.TimeoutQueue(life)
-        elif chan.logs[mask].timeout != life:
-            chan.logs[mask].setTimeout(life)
-        logs = chan.logs[mask]
-        trigger = self.registryValue('repeatPercent',channel=channel)
-        flag = False
-        result = False
-        for m in logs:
-            if compareString(m,text) > trigger:
-                flag = True
-                break
-        if flag:
-            result = self.isBadOnChannel(irc,channel,'repeat',mask)
-        if flag:
-            life = self.registryValue('computedPatternLife',channel=channel)
-            if not chan.patterns:
-                chan.patterns = utils.structures.TimeoutQueue(life)
-            elif chan.patterns.timeout != life:
-                chan.patterns.setTimeout(life)
-            if len(text) > self.registryValue('computedPattern',channel=channel):
-                repeats = list(repetitions(text))
-                candidate = ''
-                patterns = {}
-                for repeat in repeats:
-                    (p,c) = repeat
-                    if p in patterns:
-                        patterns[p] += c
-                    else:
-                        patterns[p] = c
-                    p = p.strip()
-                    if len(p) > self.registryValue('computedPattern',channel=channel):
-                        if len(p) > len(candidate):
-                            candidate = p
-                    elif len(p) > self.registryValue('repeatPattern',channel=channel) and patterns[p] > self.registryValue('repeatCount',channel=channel):
-                        if len(p) > len(candidate):
-                            candidate = p
-                    elif len(p) * c > self.registryValue('computedPattern',channel=channel):
-                        tentative = p * c
-                        if not tentative in text:
-                            tentative = (p + ' ') * c
-                            if not tentative in text:
-                                tentative = ''
-                        if len(tentative):
-                            tentative = tentative[:self.registryValue('computedPattern',channel=channel)]
-                        if len(tentative) > len(candidate):
-                            candidate = tentative
-                if len(candidate):
-                    found = False
-                    for p in chan.patterns:
-                        if p in candidate:
-                            found = True
-                            break
-                    if not found:
-                        candidate = candidate.strip()
-                        chan.patterns.enqueue(candidate)
-                        self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (single msg)' % (channel,candidate,self.registryValue('computedPatternLife',channel=channel)))
-                        # maybe, instead of awaiting for others repeated messages before kline, we could return 
-                        # and remove others users which matchs ..
-                        # return 'repeat pattern creation'
-        chan.logs[mask].enqueue(text)
-        return result
+        return self.isRepeat(irc,msg,channel,mask,text,False)
     
     def isChannelLowRepeat (self,irc,msg,channel,mask,text):
-        limit = self.registryValue('lowRepeatPermit',channel=channel)
+        return self.isRepeat(irc,msg,channel,mask,text,True)
+    
+    def isRepeat(self,irc,msg,channel,mask,text,low):
+        kind = 'repeat'
+        key = mask
+        if low:
+            kind = 'lowRepeat'
+            key = 'low_repeat %s' % mask
+        limit = self.registryValue('%sPermit' % kind,channel=channel)
         if limit < 0:
             return False
-        mini = self.registryValue('lowRepeatMinimum',channel=channel)
-        if len(text) < mini:
-            return False
+        if low:
+            if len(text) < self.registryValue('%sMinimum' % kind,channel=channel):
+                return False
         chan = self.getChan(irc,channel)
-        life = self.registryValue('lowRepeatLife',channel=channel)
-        trigger = self.registryValue('lowRepeatPercent',channel=channel)
-        key = 'low_repeat %s' % mask
+        life = self.registryValue('%sLife'  % kind,channel=channel)
+        trigger = self.registryValue('%sPercent' % kind,channel=channel)
         if not key in chan.logs:
             chan.logs[key] = utils.structures.TimeoutQueue(life)
         elif chan.logs[key].timeout != life:
             chan.logs[key].setTimeout(life)
         logs = chan.logs[key]
-        trigger = self.registryValue('lowRepeatPercent',channel=channel)
         flag = False
         result = False
         for m in logs:
@@ -1523,7 +1438,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 flag = True
                 break
         if flag:
-            result = self.isBadOnChannel(irc,channel,'lowRepeat',mask)
+            result = self.isBadOnChannel(irc,channel,kind,mask)
         if flag:
             life = self.registryValue('computedPatternLife',channel=channel)
             if not chan.patterns:
@@ -1544,7 +1459,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if len(p) > self.registryValue('computedPattern',channel=channel):
                         if len(p) > len(candidate):
                             candidate = p
-                    elif len(p) > self.registryValue('repeatPattern',channel=channel) and patterns[p] > self.registryValue('repeatCount',channel=channel):
+                    elif len(p) > self.registryValue('%sPattern' % kind,channel=channel) and patterns[p] > self.registryValue('%sCount' % kind,channel=channel):
                         if len(p) > len(candidate):
                             candidate = p
                     elif len(p) * c > self.registryValue('computedPattern',channel=channel):
@@ -1566,32 +1481,44 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if not found:
                         candidate = candidate.strip()
                         chan.patterns.enqueue(candidate)
-                        self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (single msg - low)' % (channel,candidate,self.registryValue('computedPatternLife',channel=channel)))
+                        self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,candidate,self.registryValue('computedPatternLife',channel=channel),kind))
                         # maybe, instead of awaiting for others repeated messages before kline, we could return 
                         # and remove others users which matchs ..
                         # return 'repeat pattern creation'
-        chan.logs[key].enqueue(text)
+        logs.enqueue(text)
         return result
 
+    def isChannelMassRepeat (self,irc,msg,channel,mask,text):
+        return self.isMassRepeat(irc,msg,channel,mask,text,False)
+
     def isChannelLowMassRepeat (self,irc,msg,channel,mask,text):
-        limit = self.registryValue('lowMassRepeatPermit',channel=channel)
+        return self.isMassRepeat(irc,msg,channel,mask,text,True)
+    
+    def isMassRepeat (self,irc,msg,channel,mask,text,low):
+        kind = 'massRepeat'
+        key = 'mass Repeat'
+        if low:
+            kind = 'lowMassRepeat'
+            key = 'low mass Repeat'
+        limit = self.registryValue('%sPermit' % kind,channel=channel)
         if limit < 0:
             return False
-        mini = self.registryValue('lowMassRepeatMinimum',channel=channel)
+        if len(text) < self.registryValue('%sMinimum' % kind,channel=channel):
+            return False
         chan = self.getChan(irc,channel)
-        flag = False
-        result = False
-        life = self.registryValue('lowMassRepeatLife',channel=channel)
-        trigger = self.registryValue('lowMassRepeatPercent',channel=channel)
+        life = self.registryValue('%sLife' % kind,channel=channel)
+        trigger = self.registryValue('%sPercent' % kind,channel=channel)
         length = self.registryValue('computedPattern',channel=channel)
-        pattern = None
-        key = 'low mass_repeat'
         if not key in chan.logs:
             chan.logs[key] = utils.structures.TimeoutQueue(life)
         elif chan.logs[key].timeout != life:
             chan.logs[key].setTimeout(life)
+        flag = False
+        result = False
+        pattern = None
         s = ''
-        for m in chan.logs[key]:
+        logs = chan.logs[key]
+        for m in logs:
             found = compareString(m,text)
             if found > trigger:
                 if length > 0:
@@ -1605,7 +1532,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 flag = True
                 break
         if flag:
-            result = self.isBadOnChannel(irc,channel,'lowMassRepeat',channel)
+            result = self.isBadOnChannel(irc,channel,kind,channel)
             if result and pattern:
                 life = self.registryValue('computedPatternLife',channel=channel)
                 if not chan.patterns:
@@ -1622,94 +1549,23 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if not found:
                         pattern = pattern.strip()
                         chan.patterns.enqueue(pattern)
-                        self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (low)' % (channel,candidate,self.registryValue('computedPatternLife',channel=channel)))
+                        self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,candidate,self.registryValue('computedPatternLife',channel=channel),kind))
                         users = {}
-                        # we keep the bad user for kill and kline in handleMsg
                         users[mask] = True
                         for u in chan.logs:
-                            # we have crapy things in chan.logs, only retreives valid users, key has space normaly, for others stuff
-                            # keep in mind that chan.logs for user depends to repeatLife and repeatPermit to exist
                             user = 'n!%s' % u
-                            if not u in users and ircutils.isUserHostmask(user):
+                            if not user in users and ircutils.isUserHostmask(user):
                                 for m in chan.logs[u]:
                                     if pattern in m:
-                                        self.kline(irc,u,u,self.registryValue('klineDuration'),'pattern creation in %s (low)' % channel)
-                                        self.logChannel(irc,"BAD: [%s] %s (pattern creation - low)" % (channel,u))
+                                        self.kline(irc,u,u,self.registryValue('klineDuration'),'pattern creation in %s (%s)' % (channel,kind))
+                                        self.logChannel(irc,"BAD: [%s] %s (pattern creation - %s)" % (channel,u,kind))
                                         break
-        chan.logs[key].enqueue(text)
+                            users[user] = True
+        logs.enqueue(text)
         if result and pattern:
             return result
         return False
 
-    def isChannelMassRepeat (self,irc,msg,channel,mask,text):
-        limit = self.registryValue('massRepeatPermit',channel=channel)
-        if limit < 0:
-            return False
-        mini = self.registryValue('massRepeatMinimum',channel=channel)
-        chan = self.getChan(irc,channel)
-        flag = False
-        result = False
-        life = self.registryValue('massRepeatLife',channel=channel)
-        trigger = self.registryValue('massRepeatPercent',channel=channel)
-        length = self.registryValue('computedPattern',channel=channel)
-        pattern = None
-        key = 'mass_repeat %s' % channel
-        if not key in chan.logs:
-            chan.logs[key] = utils.structures.TimeoutQueue(life)
-        elif chan.logs[key].timeout != life:
-            chan.logs[key].setTimeout(life)
-        s = ''
-        for m in chan.logs[key]:
-            found = compareString(m,text)
-            if found > trigger:
-                if length > 0:
-                    pattern = largestString(m,text)
-                    if len(pattern) < length:
-                        pattern = None
-                    else:
-                        if len(s) > len(pattern):
-                            pattern = s
-                        s = pattern
-                flag = True
-                break
-        if flag:
-            result = self.isBadOnChannel(irc,channel,'massRepeat',channel)
-            if result and pattern:
-                life = self.registryValue('computedPatternLife',channel=channel)
-                if not chan.patterns:
-                    chan.patterns = utils.structures.TimeoutQueue(life)
-                if chan.patterns.timeout != life:
-                    chan.patterns.setTimeout(life)
-                if len(pattern) > self.registryValue('computedPattern',channel=channel):
-                    pattern = pattern[:-1]
-                    found = False
-                    for p in chan.patterns:
-                        if p in pattern:
-                            found = True
-                            break
-                    if not found:
-                        pattern = pattern.strip()
-                        chan.patterns.enqueue(pattern)
-                        self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (mass repeat)' % (channel,pattern,self.registryValue('computedPatternLife',channel=channel)))
-                        users = {}
-                        # we keep the bad user for kill and kline in handleMsg
-                        users[mask] = True
-                        for u in chan.logs:
-                            # we have crapy things in chan.logs, only retreives valid users, key has space normaly, for others stuff
-                            # keep in mind that chan.logs for user depends to repeatLife and repeatPermit to exist
-                            user = 'n!%s' % u
-                            if not u in users and ircutils.isUserHostmask(user):
-                                for m in chan.logs[u]:
-                                    if pattern in m:
-                                        users[u] = True
-                                        self.kline(irc,u,u,self.registryValue('klineDuration'),'pattern creation in %s' % channel)
-                                        self.logChannel(irc,"BAD: [%s] %s (pattern creation)" % (channel,u))
-                                        break
-                                    
-        chan.logs[key].enqueue(text)
-        if result and pattern:
-            return result
-        return False
     
     def logChannel(self,irc,message):
         channel = self.registryValue('logChannel')
@@ -1749,6 +1605,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 del c.buffers[key][mask]
                     del c.nicks[nick]
         if not hasClone and mask:
+            self.log.debug('rmNick %s',nick)
             i = self.getIrc(irc)
             if mask in i.logs:
                 del i.logs[mask]
