@@ -33,26 +33,29 @@
 ###
 
 import os
+import sys
 import time
-import supybot.utils as utils
-from supybot.commands import *
+import socket
+import urllib
+import sqlite3
+import httplib
+import threading
 import subprocess
-import supybot.commands as commands
-import supybot.plugins as plugins
-import supybot.ircutils as ircutils
-import supybot.ircmsgs as ircmsgs
-import supybot.callbacks as callbacks
-import supybot.ircdb as ircdb
+
+
 import supybot.log as log
+import supybot.conf as conf
+import supybot.utils as utils
+import supybot.ircdb as ircdb
+import supybot.world as world
+from supybot.commands import *
+import supybot.ircmsgs as ircmsgs
+import supybot.plugins as plugins
+import supybot.commands as commands
+import supybot.ircutils as ircutils
+import supybot.callbacks as callbacks
 import supybot.schedule as schedule
 import supybot.registry as registry
-import supybot.conf as conf
-import socket
-import re
-import sqlite3
-import urllib
-import httplib
-import sys
 
 try:
     from supybot.i18n import PluginInternationalization
@@ -407,9 +410,6 @@ class Pattern (object):
     def __repr__(self):
         return '%s(uid=%r, pattern=%r, limit=%r, life=%r, _match=%r)' % (self.__class__.__name__,
         self.uid, self.pattern, self.limit, self.life, self._match)
-
-import threading
-import supybot.world as world
 
 class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     """Network and Channels Spam protections"""
