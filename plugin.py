@@ -757,11 +757,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 canKline = True
             else:
                 # we must search ip behind cloak; user is already killed
-                canKline = False
-                (nick,ident,host) = ircutils.splitHostmask(prefix)
-                if not nick in i.whowas:
-                    i.whowas[nick] = [prefix,mask,duration,reason,klineMessage]
-                    irc.sendMsg(ircmsgs.IrcMsg('WHOWAS %s' % nick))
+                if ircutils.isUserHostmask(prefix):
+                    canKline = False
+                    (nick,ident,host) = ircutils.splitHostmask(prefix)
+                    if not nick in i.whowas:
+                        i.whowas[nick] = [prefix,mask,duration,reason,klineMessage]
+                        irc.sendMsg(ircmsgs.IrcMsg('WHOWAS %s' % nick))
         if canKline:
             if not self.registryValue('enable'):
                 self.logChannel(irc,"INFO: disabled, can't kline %s (%s)" % (mask,reason))
@@ -1459,7 +1460,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 break
         if flag:
             result = self.isBadOnChannel(irc,channel,kind,mask)
-        if flag and result:
+        if flag:
             life = self.registryValue('computedPatternLife',channel=channel)
             if not chan.patterns:
                 chan.patterns = utils.structures.TimeoutQueue(life)
@@ -1574,13 +1575,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         users[mask] = True
                         for u in chan.logs:
                             user = 'n!%s' % u
-                            if not user in users and ircutils.isUserHostmask(user):
+                            if not u in users and ircutils.isUserHostmask(user):
                                 for m in chan.logs[u]:
                                     if pattern in m:
                                         self.kline(irc,u,u,self.registryValue('klineDuration'),'pattern creation in %s (%s)' % (channel,kind))
                                         self.logChannel(irc,"BAD: [%s] %s (pattern creation - %s)" % (channel,u,kind))
                                         break
-                            users[user] = True
+                            users[u] = True
         logs.enqueue(text)
         if result and pattern:
             return result
