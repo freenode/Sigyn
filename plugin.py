@@ -33,6 +33,7 @@
 ###
 
 import os
+import re
 import sys
 import time
 import socket
@@ -720,7 +721,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if msg.args[0] == irc.nick and msg.args[1] in i.whowas:
             pending = i.whowas[msg.args[1]]
             del i.whowas[msg.args[1]]
-            (nick,ident,host) = ircutils.splitHostmask(prefix)
+            (nick,ident,host) = ircutils.splitHostmask(pending[0])
             # [prefix,mask,duration,reason,klineMessage]
             ident = pending[1].split('@')[0]
             mask = prefixToMask(irc,'%s!%s@%s' % (nick,ident,msg.args[2]))
@@ -799,6 +800,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def handleReportMessage (self,irc,msg):
         (targets, text) = msg.args
         if msg.nick.startswith(self.registryValue('reportNick')):
+            i = self.getIrc(irc)
             if text.startswith('BAD:') and not '(tor' in text:
                 permit = self.registryValue('reportLife')
                 if permit > -1:
@@ -842,7 +844,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     def forget ():
                         if i.dline == host:
                             i.dline = ''
-                    schedule.addEvent(d,time.time()+7)
+                    schedule.addEvent(forget,time.time()+7)
             # removing empty queues, to save some memory
             removes = []
             for k in list(i.queues['sasl'].keys()):
@@ -867,7 +869,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         mask = prefixToMask(irc,msg.prefix)
         i = self.getIrc(irc)
         if i.defcon:
-            if time.time() > i.defcon:
+            if time.time() > i.defcon + self.registryValue('defcon'):
                 i.defcon = False
                 self.logChannel(irc,"INFO: triggers restored to normal behaviour")
         if i.efnet:
@@ -944,7 +946,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if chan.patterns:
                     for pattern in chan.patterns:
                         if pattern in text:
-                            reason = 'matchs tmp pattern'
+                            reason = 'matchs tmp pattern in %s' % channel
                             break
                 # channel detections
                 massrepeat = self.isChannelMassRepeat(irc,msg,channel,mask,text)
@@ -1457,7 +1459,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 break
         if flag:
             result = self.isBadOnChannel(irc,channel,kind,mask)
-        if flag:
+        if flag and result:
             life = self.registryValue('computedPatternLife',channel=channel)
             if not chan.patterns:
                 chan.patterns = utils.structures.TimeoutQueue(life)
@@ -1839,11 +1841,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if i.netsplit:
                         continue
                     bad = self.isBadOnChannel(irc,channel,'broken',mask)
+                    if isBanned:
+                        continue
                     if bad:
                         self.kline(irc,msg.prefix,mask,self.registryValue('brokenDuration'),'%s in %s' % ('join/quit flood',channel),self.registryValue('brokenReason') % self.registryValue('brokenDuration'))
                         self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,'broken client',mask))
                         isBanned = True
-                    if isBanned:
                         continue
                     # to work, the bot must CAP REQ extended-join
                     hosts = self.registryValue('brokenHost',channel=channel)
