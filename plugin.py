@@ -681,7 +681,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self._ircs[irc.network].restore(self.getDb(irc.network))
             if len(self.registryValue('operatorNick')) and len(self.registryValue('operatorPassword')):
                 irc.sendMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
-            irc.queueMsg(ircmsgs.IrcMsg('CAP REQ :extended-join account-notify'))
         return self._ircs[irc.network]
     
     def doAccount (self,irc,msg):
@@ -758,6 +757,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             else:
                 # we must search ip behind cloak; user is already killed
                 if ircutils.isUserHostmask(prefix):
+                    # with pattern creation, we don't have nicks  
                     canKline = False
                     (nick,ident,host) = ircutils.splitHostmask(prefix)
                     if not nick in i.whowas:
@@ -1039,6 +1039,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 
     def doPrivmsg (self,irc,msg):
         self.handleMsg(irc,msg,False)
+
+    def do903 (self,irc,msg):
+        irc.queueMsg(ircmsgs.IrcMsg('CAP REQ :extended-join account-notify'))    
 
     def do215 (self,irc,msg):
         i = self.getIrc(irc)
@@ -1578,7 +1581,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             if not u in users and ircutils.isUserHostmask(user):
                                 for m in chan.logs[u]:
                                     if pattern in m:
-                                        self.kline(irc,u,u,self.registryValue('klineDuration'),'pattern creation in %s (%s)' % (channel,kind))
+                                        # todo, recover nick ..
+                                        prefix = u
+                                        if isCloaked(user):
+                                            nick = None
+                                            for n in chan.nicks:
+                                                if chan.nicks[n][2] == u:
+                                                    nick = n
+                                                    break
+                                            if nick:
+                                                prefix = '%s!%s' % (nick,u)
+                                        self.kline(irc,prefix,u,self.registryValue('klineDuration'),'pattern creation in %s (%s)' % (channel,kind))
                                         self.logChannel(irc,"BAD: [%s] %s (pattern creation - %s)" % (channel,u,kind))
                                         break
                             users[u] = True
@@ -1672,6 +1685,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
                         def check(answer):
                             if not 'listed="1"' in answer:
+                                self.log.debug('adding %s to dronebl' % ip)
                                 add = "<?xml version=\"1.0\"?><request key='"+self.registryValue('droneblKey')+"'><add ip='"+ip +"' type='3' comment='used by irc spam bot' /></request>"
                                 type, uri = urllib.splittype(self.registryValue('droneblHost'))
                                 host, handler = urllib.splithost(uri)
