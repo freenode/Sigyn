@@ -1367,7 +1367,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 return False
         life = self.registryValue('%sLife' % kind,channel=channel)
         if limit == 0:
-            return '%s %s/%ss' % (kind,limit,life)
+            return '%s %s/%ss in %s' % (kind,limit,life,channel)
         if not kind in chan.buffers:
             chan.buffers[kind] = {}
         if not key in chan.buffers[kind]:
@@ -1381,8 +1381,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 limit = 0
         if len(chan.buffers[kind][key]) > limit:
             chan.buffers[kind][key].reset()
-            self.isAbuseOnChannel(irc,channel,kind,key)
-            return '%s %s/%ss' % (kind,limit,life)
+            if not kind == 'broken':
+                self.isAbuseOnChannel(irc,channel,kind,key)
+            return '%s %s/%ss in %s' % (kind,limit,life,channel)
         return False
     
     def isChannelCtcp (self,irc,msg,channel,mask,text):
@@ -1680,10 +1681,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if message:
             if not ip in i.digs:
                 i.digs[ip] = message
+                duration = self.registryValue('efnetDuration',channel=channel)
                 if self.isBadOnChannel(irc,channel,'efnet',ip):
-                    duration = self.registryValue('efnetDuration',channel=channel)
                     if not i.efnet:
                         self.logChannel(irc,"INFO: klining efnet's users for %ss because joins in %s" % (duration,channel))
+                if i.efnet:
                     i.efnet = time.time()+duration
                 if i.efnet or i.defcon:
                     log = 'BAD: [%s] %s (%s - EFNET) -> %s' % (channel,prefix,message,mask)
