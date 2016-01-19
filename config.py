@@ -65,9 +65,9 @@ conf.registerGlobalValue(Sigyn, 'killMessage',
      registry.String("Spam is off topic on freenode.", """kill reason"""))
      
 conf.registerGlobalValue(Sigyn, 'operatorNick',
-     registry.String("", """oper's nick, must be filled"""))
+     registry.String("", """oper's nick, must be filled""", private=True))
 conf.registerGlobalValue(Sigyn, 'operatorPassword',
-     registry.String("", """oper's password, must be filled"""))
+     registry.String("", """oper's password, must be filled""", private=True))
 
 conf.registerGlobalValue(Sigyn, 'alertPeriod',
     registry.PositiveInteger(1,"""interval between 2 alerts of same type in logChannel"""))
