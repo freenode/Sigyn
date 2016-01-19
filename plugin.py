@@ -811,7 +811,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if len(queue) > permit:
                         queue.reset()
                         if not i.defcon:
-                            self.logChannel(irc,"BOT: Wave in progress (%s/%ss), ignores lifted, triggers thresholds lowered for %ss at least" % (self.registryValue('topmPermit'),self.registryValue('topmLife'),self.registryValue('defcon'))) 
+                            self.logChannel(irc,"BOT: Wave in progress (%s/%ss), ignores lifted, triggers thresholds lowered for %ss at least" % (self.registryValue('reportPermit'),self.registryValue('reportLife'),self.registryValue('defcon'))) 
                         i.defcon = time.time()
     
     def handleSaslMessage (self,irc,msg):
@@ -835,7 +835,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not stored:
                 queue.enqueue(uuid)
             i = self.getIrc(irc)
-            if len(queue) > self.registryValue('saslPermit'):
+            if len(queue) > self.registryValue('saslPermit') or '.tor.' in text or '.tor-exit.' in text or '.torexit.' in text or '.torservers.' in text or '.tor-relay.' in text or '.torproxy.' in text:
                 if not len(i.dline):
                     # if there is already a testline outside, we just keep the queue up
                     # it will be triggered at next try
@@ -1318,9 +1318,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def hasAbuseOnChannel (self,irc,channel,key):
         chan = self.getChan(irc,channel)
         kind = 'abuse'
+        limit = self.registryValue('%sPermit' % kind,channel=channel)
         if kind in chan.buffers:
             if key in chan.buffers[kind]:
-                if len(chan.buffers[kind][key]) > 1:
+                if len(chan.buffers[kind][key]) > limit:
                     return True
         return False
  
@@ -1339,14 +1340,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             chan.buffers[kind][key].setTimeout(life)
         found = False
         for m in chan.buffers[kind][key]:
-            if m == mask:
+            if mask == m:
                 found = True
+                break
         if not found:
             chan.buffers[kind][key].enqueue(mask)
         if len(chan.buffers[kind][key]) > limit:
+            self.log.debug('abuse in %s : %s : %s/%s' % (channel,key,len(chan.buffers[kind][key]),limit))
             # chan.buffers[kind][key].reset()
             # queue not reseted, that way during life, it returns True
-            i = self.getIrc(irc)
             if not chan.called:
                 self.logChannel(irc,"INFO: ignores lifted and triggers thresholds lowered in %s due to %s abuses for %ss at least" % (channel,key,self.registryValue('abuseDuration'))) 
             chan.called = time.time()
@@ -1463,7 +1465,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 break
         if flag:
             result = self.isBadOnChannel(irc,channel,kind,mask)
+        enough = False
         if flag:
+            l = self.registryValue('%sPermit' % kind,channel=channel)
+            if len(chan.buffers[kind][mask])/(l * 1.0) > 0.66:
+                enough = True
+        if enough:
             life = self.registryValue('computedPatternLife',channel=channel)
             if not chan.patterns:
                 chan.patterns = utils.structures.TimeoutQueue(life)
