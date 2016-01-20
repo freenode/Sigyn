@@ -61,7 +61,7 @@ conf.registerGlobalValue(Sigyn, 'klineDuration',
      registry.Integer(-1, """kline duration, in minutes, with -1, bot will not kill or kline"""))
 conf.registerGlobalValue(Sigyn, 'klineMessage',
      registry.String("Please do not spam users or channels on freenode. If in error, please contact kline@freenode.net.", """default reason used in kline's message"""))
-conf.registerGlobalValue(Sigyn, 'killMessage',
+conf.registerChannelValue(Sigyn, 'killMessage',
      registry.String("Spam is off topic on freenode.", """kill reason"""))
      
 conf.registerGlobalValue(Sigyn, 'operatorNick',
@@ -95,7 +95,7 @@ conf.registerGlobalValue(Sigyn, 'saslReason',
 # dronebl submit
 
 conf.registerGlobalValue(Sigyn, 'droneblKey',
-     registry.String("", """dronebl key for rpc calls"""))
+     registry.String("", """dronebl key for rpc calls""", private=True))
 conf.registerGlobalValue(Sigyn, 'droneblHost',
      registry.String("http://dronebl.org/RPC2", """where bot must do rpc calls"""))
 

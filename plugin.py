@@ -705,7 +705,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             i.channels[channel] = Chan(channel)
         return i.channels[channel]
     
-    def kill (self,irc,nick):
+    def kill (self,irc,nick,reason=None):
         i = self.getIrc(irc)
         if not self.registryValue('enable'):
             self.logChannel(irc,"INFO: disabled, can't kill %s" % nick)
@@ -713,7 +713,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if not i.opered:
             self.logChannel(irc,"INFO: not opered, can't kill %s" % nick)
             return
-        irc.sendMsg(ircmsgs.IrcMsg('KILL %s :%s' % (nick,self.registryValue('killMessage'))))
+        if not reason:
+            reason = self.registryValue('killMessage')
+        irc.sendMsg(ircmsgs.IrcMsg('KILL %s :%s' % (nick,reason)))
             
     def do338 (self,irc,msg):
         i = self.getIrc(irc)
@@ -773,8 +775,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 del i.klines[mask]
         schedule.addEvent(forgetKline,time.time()+7)
             
-    def ban (self,irc,nick,prefix,mask,duration,reason,message,log):
-        self.kill(irc,nick)
+    def ban (self,irc,nick,prefix,mask,duration,reason,message,log,killReason=None):
+        self.kill(irc,nick,killReason)
         self.kline(irc,prefix,mask,duration,reason,message)
         self.logChannel(irc,log)
         
@@ -906,6 +908,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 protected = ircdb.makeChannelCapability(channel, 'protected')
                 if ircdb.checkCapability(msg.prefix, protected):
                     continue
+                killReason = self.registryValue('killMessage',channel=channel)
                 for k in i.patterns:
                     pattern = i.patterns[k]
                     if pattern.match(raw):
@@ -913,7 +916,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             isBanned = True
                             reason = 'matchs #%s in %s' % (pattern.uid,channel)
                             log = 'BAD: [%s] %s (matchs #%s) -> %s' % (channel,msg.prefix,pattern.uid,mask)
-                            self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log)
+                            self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                             i.count(self.getDb(irc.network),pattern.uid)
                             break
                         else:
@@ -923,7 +926,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 isBanned = True
                                 reason = 'matchs #%s (%s/%ss) in %s' % (pattern.uid,pattern.limit,pattern.life,channel)
                                 log = 'BAD: [%s] %s (matchs #%s %s/%ss) -> %s' % (channel,msg.prefix,pattern.uid,pattern.limit,pattern.life,mask)
-                                self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log)
+                                self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                                 self.rmIrcQueueFor(irc,mask)
                                 i.count(self.getDb(irc.network),pattern.uid)
                                 break
@@ -1005,13 +1008,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             isBanned = True        
                             reason = '%s %s' % (reason,bypassIgnore) 
                             log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
-                            self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log)
+                            self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                         else:
                             self.logChannel(irc,'IGNORED: [%s] %s (%s)' % (channel,msg.prefix,reason))
                     else:
                         isBanned = True
                         log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
-                        self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log)
+                        self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                 if not isBanned:
                     # todo re-implement amsg detection
                     mini = self.registryValue('amsgMinium')
