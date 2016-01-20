@@ -942,7 +942,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if time.time()-ts > ignoreDuration:
                         # TODO previously we do not ignore on chan.called or i.defcon
                         # could be 'not (chan.called or i.defcon)'
-                        isIgnored = not (chan.called or i.defcon)
+                        isIgnored = not (i.defcon)
                 reason = ''
                 if chan.patterns:
                     for pattern in chan.patterns:
@@ -951,16 +951,34 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             break
                 # channel detections
                 massrepeat = self.isChannelMassRepeat(irc,msg,channel,mask,text)
+                if massrepeat and self.hasAbuseOnChannel(irc,channel,'massRepeat'):
+                    isIgnored = False
                 lowmassrepeat = self.isChannelLowMassRepeat(irc,msg,channel,mask,text)
+                if lowmassrepeat and self.hasAbuseOnChannel(irc,channel,'lowMassRepeat'):
+                    isIgnored = False
                 repeat = self.isChannelRepeat(irc,msg,channel,mask,text)
+                if repeat and self.hasAbuseOnChannel(irc,channel,'repeat'):
+                    isIgnored = False
                 lowrepeat = self.isChannelLowRepeat(irc,msg,channel,mask,text)
+                if lowrepeat and self.hasAbuseOnChannel(irc,channel,'lowRepeat'):
+                    isIgnored = False
                 hilight = self.isChannelHilight(irc,msg,channel,mask,text)
+                if hilight and self.hasAbuseOnChannel(irc,channel,'hilight'):
+                    isIgnored = False
                 lowhilight = self.isChannelLowHilight(irc,msg,channel,mask,text)
+                if lowhilight and self.hasAbuseOnChannel(irc,channel,'lowHilight'):
+                    isIgnored = False
                 flood = self.isChannelFlood(irc,msg,channel,mask,text)
+                if flood and self.hasAbuseOnChannel(irc,channel,'flood'):
+                    isIgnored = False
                 lowflood = self.isChannelLowFlood(irc,msg,channel,mask,text)
+                if lowflood and self.hasAbuseOnChannel(irc,channel,'lowFlood'):
+                    isIgnored = False
                 ctcp = False
                 if not ircmsgs.isAction(msg) and (ircmsgs.isCtcp(msg) or isNotice):
                     ctcp = self.isChannelCtcp(irc,msg,channel,mask,text)
+                if ctcp and self.hasAbuseOnChannel(irc,channel,'ctcp'):
+                    isIgnored = False
                 if not reason:
                     if massrepeat:
                         reason = massrepeat
