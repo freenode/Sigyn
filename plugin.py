@@ -41,8 +41,6 @@ import urllib
 import sqlite3
 import httplib
 import threading
-import subprocess
-
 
 import supybot.log as log
 import supybot.conf as conf
@@ -264,7 +262,8 @@ class Ircd (object):
         self.digs = {}
         # flag or time
         self.netsplit = False
-    
+        self.tors = {}
+
     def __repr__(self):
         return '%s(patterns=%r, queues=%r, channels=%r, pending=%r, logs=%r, digs=%r, limits=%r, whowas=%r, klines=%r)' % (self.__class__.__name__,
         self.patterns, self.queues, self.channels, self.pending, self.logs, self.digs, self.limits, self.whowas, self.klines)
@@ -816,7 +815,32 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         if not i.defcon:
                             self.logChannel(irc,"BOT: Wave in progress (%s/%ss), ignores lifted, triggers thresholds lowered for %ss at least" % (self.registryValue('reportPermit'),self.registryValue('reportLife'),self.registryValue('defcon'))) 
                         i.defcon = time.time()
-    
+
+    def tor (self,irc,ip):
+        i = self.getIrc(irc)
+        if utils.net.isIPV4(ip):
+            ports = self.registryValue('torPorts')
+            server = self.registryValue('torServer')
+            target = self.registryValue('torTarget')
+            ipr = '.'.join(ip.split('.')[::-1])
+            targetr = '.'.join(target.split('.')[::-1])
+            for port in ports:
+                request = '%s.%s.%s.%s' % (ipr,port,targetr,server)
+                try:
+                    result = socket.gethostbyname(request)
+                    if result == '127.0.0.2':
+                        i.tors[ip] = True
+                    else:
+                        if not ip in i.tors:
+                            i.tors[ip] = False
+                except socket.error as err:
+                    if not ip in i.tors:
+                        i.tors[ip] = False
+                if ip in i.tors and i.tors[ip]:
+                    break
+        else:
+            i.tors[ip] = False    
+
     def handleSaslMessage (self,irc,msg):
         (targets, text) = msg.args
         if msg.nick == self.registryValue('saslNick') and self.registryValue('saslPermit') > -1:
@@ -838,7 +862,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not stored:
                 queue.enqueue(uuid)
             i = self.getIrc(irc)
-            if len(queue) > self.registryValue('saslPermit'):
+            if not host in i.tors and utils.net.isIPV4(host):
+                if len(self.registryValue('torPorts')) and len(self.registryValue('torServer')) and len(self.registryValue('torTarget')):
+                    t = world.SupyThread(target=self.tor,name=format('tor %s for %s', host, uuid),args=(irc,host))
+                    t.setDaemon(True)
+                    t.start()
+                else:
+                    i.tors[host] = False
+            if len(queue) > self.registryValue('saslPermit') or (host in i.tors and i.tors[host]):
                 if not len(i.dline):
                     # if there is already a testline outside, we just keep the queue up
                     # it will be triggered at next try
@@ -856,7 +887,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     removes.append(k)
             for k in removes:
                 del i.queues['sasl'][k]
-                self.log.debug('Sasl, removing queue %s', k)
+                if k in i.tors:
+                    del i.tors[k]
         if self.registryValue('saslPermit') < 0:
             self.rmIrcQueueFor(irc,'sasl')
                         
@@ -1075,7 +1107,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if self.registryValue('saslChannel') in irc.state.channels:
                     if self.registryValue('enable'):
                         irc.sendMsg(ircmsgs.IrcMsg('DLINE %s %s on * :%s' % (duration,i.dline,self.registryValue('saslReason'))))
-                    irc.queueMsg(ircmsgs.privmsg(self.registryValue('saslChannel'),'DLINED %s for %sm : SASL Brute Force %s/%ss' % (i.dline,duration,self.registryValue('saslPermit'),self.registryValue('saslLife'))))
+                        tor = ''
+                        if i.dline in i.tors and i.tors[i.dline]:
+                            tor = '(TOR)'
+                    irc.queueMsg(ircmsgs.privmsg(self.registryValue('saslChannel'),'DLINED %s for %sm : SASL Brute Force %s/%ss %s' % (i.dline,duration,self.registryValue('saslPermit'),self.registryValue('saslLife'),tor)))
         else:
                 if self.registryValue('saslChannel') in irc.state.channels:
                     irc.queueMsg(ircmsgs.privmsg(self.registryValue('saslChannel'),'IGNORED %s due to iline (%s)' % (i.dline,msg.args[2])))
@@ -1676,7 +1711,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 del c.buffers[key][mask]
                     del c.nicks[nick]
         if not hasClone and mask:
-            self.log.debug('rmNick %s',nick)
+            #self.log.debug('rmNick %s',nick)
             i = self.getIrc(irc)
             if mask in i.logs:
                 del i.logs[mask]
@@ -1691,8 +1726,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         h = h + '.rbl.efnetrbl.org'
         m = None
         try:
-            (m,err) = subprocess.Popen(['dig','+short',h],stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-        except subprocess.CalledProcessError:
+            m = socket.gethostbyname(h)
+        except:
             m = None
         message = None
         if m:
@@ -1706,7 +1741,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 elif entry == '127.0.0.5':
                     message = 'Drone/Irc bot'
                     break
-        self.log.debug('digged %s --> %s --> %s', prefix,ip,message)
         if message:
             if not ip in i.digs:
                 i.digs[ip] = message

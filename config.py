@@ -91,7 +91,12 @@ conf.registerGlobalValue(Sigyn, 'saslNick',
     registry.String("","""nick who send sasl informations"""))
 conf.registerGlobalValue(Sigyn, 'saslReason',
     registry.String("Banned due to too many failed login attempts (SASL https://freenode.net/sasl/) in a short period, email kline@freenode.net when corrected. Thanks!","""reason used in dline"""))
-
+conf.registerGlobalValue(Sigyn, 'torServer',
+    registry.String("","""tor listing server"""))
+conf.registerChannelValue(Sigyn, 'torPorts',
+    registry.CommaSeparatedListOfStrings([''], """ports to check"""))
+conf.registerChannelValue(Sigyn, 'torTarget',
+    registry.String("","""ip of the targeted ircd, for tor checks"""))
 # dronebl submit
 
 conf.registerGlobalValue(Sigyn, 'droneblKey',
