@@ -33,6 +33,10 @@ After being correctly configured, bot can handle attacks without human hands, mo
 
 ## Configuration ##
 
+First measure :
+
+    defaultcapability remove protected
+
 If you are familiar with ChanTracker, settings in config.py should be easy to understand.
 
     supybot.plugins.Sigyn.enable

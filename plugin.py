@@ -652,14 +652,18 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)    
         if not i.opered:
             if len(self.registryValue('operatorNick')) and len(self.registryValue('operatorPassword')):
-                irc.sendMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))       
+                irc.queueMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))       
 
     def do381 (self,irc,msg):
         i = self.getIrc(irc)
         if not i.opered:
             i.opered = True
             irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bf' % irc.nick))
-    
+            try:
+                conf.supybot.protocols.irc.throttleTime.setValue(0.01)
+            except:
+                t = True
+
     def doMode (self,irc,msg):
         target = msg.args[0]
         if target == irc.nick:
@@ -667,20 +671,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             modes = ircutils.separateModes(msg.args[1:])
             for change in modes:
                 (mode,value) = change
-                if mode == '+o':
-                    i.opered = True
-                    irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bf' % irc.nick))
-                elif mode == '-o':
+                if mode == '-o':
                     i.opered = False
                     if len(self.registryValue('operatorNick')) and len(self.registryValue('operatorPassword')):
-                        irc.sendMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
+                        irc.queueMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
 
     def getIrc (self,irc):
         if not irc.network in self._ircs:
             self._ircs[irc.network] = Ircd(irc)
             self._ircs[irc.network].restore(self.getDb(irc.network))
             if len(self.registryValue('operatorNick')) and len(self.registryValue('operatorPassword')):
-                irc.sendMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
+                irc.queueMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
         return self._ircs[irc.network]
     
     def doAccount (self,irc,msg):
@@ -805,7 +806,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if msg.nick.startswith(self.registryValue('reportNick')):
             i = self.getIrc(irc)
             if text.startswith('BAD:') and not '(tor' in text:
-                permit = self.registryValue('reportLife')
+                permit = self.registryValue('reportPermit')
                 if permit > -1:
                     life = self.registryValue('reportLife')
                     queue = self.getIrcQueueFor(irc,'report','bad',life)
@@ -837,7 +838,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not stored:
                 queue.enqueue(uuid)
             i = self.getIrc(irc)
-            if len(queue) > self.registryValue('saslPermit') or '.tor.' in text or '.tor-exit.' in text or '.torexit.' in text or '.torservers.' in text or '.tor-relay.' in text or '.torproxy.' in text:
+            if len(queue) > self.registryValue('saslPermit'):
                 if not len(i.dline):
                     # if there is already a testline outside, we just keep the queue up
                     # it will be triggered at next try
@@ -859,7 +860,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if self.registryValue('saslPermit') < 0:
             self.rmIrcQueueFor(irc,'sasl')
                         
-    def handleMsg (self,irc,msg,isNotice):
+    def handleMsg (self,irc,msg,isNotice):           
         if not ircutils.isUserHostmask(msg.prefix):
             return
         if msg.prefix == irc.prefix:
@@ -894,6 +895,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if self.registryValue('saslChannel') == channel:
                     self.handleSaslMessage(irc,msg)
                 if self.registryValue('ignoreChannel',channel):
+                    continue
+                if ircdb.checkCapability(msg.prefix, 'protected'):
                     continue
                 chan = self.getChan(irc,channel)
                 if chan.called:
@@ -945,7 +948,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if time.time()-ts > ignoreDuration:
                         # TODO previously we do not ignore on chan.called or i.defcon
                         # could be 'not (chan.called or i.defcon)'
-                        isIgnored = not (i.defcon)
+                        isIgnored = True 
                 reason = ''
                 if chan.patterns:
                     for pattern in chan.patterns:
@@ -1298,6 +1301,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not ircutils.isUserHostmask(user):
                 return
             mask = prefixToMask(irc,user)
+            mask = '*@%s' % mask.split('@')[1]
             queue = self.getIrcQueueFor(irc,mask,'klineNote',7)
             queue.enqueue(user)
             key = 'wideKlineAlert'
@@ -1632,12 +1636,16 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     
     def logChannel(self,irc,message):
         channel = self.registryValue('logChannel')
+        i = self.getIrc(irc)
         if channel in irc.state.channels:
+            msg = ircmsgs.privmsg(channel,message)
             if self.registryValue('useNotice'):
-                irc.sendMsg(ircmsgs.notice(channel,message))
+                msg = ircmsgs.notice(channel,message)
+            if i.opered:
+                irc.sendMsg(msg)
             else:
-                irc.sendMsg(ircmsgs.privmsg(channel,message))
-                
+                irc.queueMsg(msg)
+
     def rmNick (self,irc,nick,force=False):
         # here we clear queues, logs, buffers whatever filled by a user
         hasClone = False
@@ -1706,6 +1714,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if self.isBadOnChannel(irc,channel,'efnet',ip):
                     if not i.efnet:
                         self.logChannel(irc,"INFO: klining efnet's users for %ss because joins in %s" % (duration,channel))
+                    i.efnet = time.time()+duration
                 if i.efnet:
                     i.efnet = time.time()+duration
                 if i.efnet or i.defcon:
@@ -1753,6 +1762,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             return
         channels = msg.args[0].split(',')
         if not ircutils.isUserHostmask(msg.prefix):
+            return
+        if ircdb.checkCapability(msg.prefix, 'protected'):
             return
         i = self.getIrc(irc)
         mask = prefixToMask(irc,msg.prefix)
@@ -1978,6 +1989,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self._ircs = ircutils.IrcDict()
     
     def die(self):
+        try:
+            conf.supybot.protocols.irc.throttleTime.setValue(1.6)
+        except:
+            self.log.debug('error while trying to change throttleTime')
         self._ircs = ircutils.IrcDict()
 
     def doError (self,irc,msg):
