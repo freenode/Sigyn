@@ -707,6 +707,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     
     def kill (self,irc,nick,reason=None):
         i = self.getIrc(irc)
+        if i.defcon:
+            i.defcon = time.time()
         if not self.registryValue('enable'):
             self.logChannel(irc,"INFO: disabled, can't kill %s" % nick)
             return
@@ -828,6 +830,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 request = '%s.%s.%s.%s' % (ipr,port,targetr,server)
                 try:
                     result = socket.gethostbyname(request)
+                    self.log.debug('%s --> %s' % (ip,result))
                     if result == '127.0.0.2':
                         i.tors[ip] = True
                     else:
@@ -835,6 +838,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             i.tors[ip] = False
                 except socket.error as err:
                     if not ip in i.tors:
+                        self.log.debug('%s --> %s -> %s' % (ip,request,err))
                         i.tors[ip] = False
                 if ip in i.tors and i.tors[ip]:
                     break
@@ -986,6 +990,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     for pattern in chan.patterns:
                         if pattern in text:
                             reason = 'matchs tmp pattern in %s' % channel
+                            # redo duration
+                            chan.patterns.enqueue(pattern)
                             break
                 # channel detections
                 massrepeat = self.isChannelMassRepeat(irc,msg,channel,mask,text)
@@ -1037,6 +1043,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     elif ctcp:
                         reason = ctcp
                 if reason:
+                    if chan.called:
+                        chan.called = time.time()
                     if isIgnored:
                         bypassIgnore = self.isBadOnChannel(irc,channel,'bypassIgnore',mask)
                         if bypassIgnore:
@@ -1259,7 +1267,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 break
         if not stored:
             queue.enqueue(target)
-        if len(queue) > limit*3:
+        if len(queue) > limit*5:
             channels = list(queue)
             queue.reset()
             if not key in i.queues[user]:
@@ -1727,7 +1735,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         m = None
         try:
             m = socket.gethostbyname(h)
-        except:
+        except socket.error as err:
+            self.log.debug('%s -> %s -> %s' % (ip,h,err))
             m = None
         message = None
         if m:
