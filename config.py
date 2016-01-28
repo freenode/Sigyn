@@ -77,6 +77,11 @@ conf.registerGlobalValue(Sigyn, 'netsplitDuration',
 conf.registerGlobalValue(Sigyn, 'alertOnWideKline',
     registry.Integer(-1,"""alert if a kline hits more than expected users"""))
 
+conf.registerGlobalValue(Sigyn, 'lagPermit',
+     registry.Integer(-1, """max lag allowed in seconds, otherwise entering netsplit mode"""))
+conf.registerGlobalValue(Sigyn, 'lagInterval',
+     registry.PositiveInteger(1, """interval between two check about lag"""))
+
 # sasl abuses detection
 
 conf.registerGlobalValue(Sigyn, 'saslPermit',
