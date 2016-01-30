@@ -175,7 +175,7 @@ class Ircd (object):
         # { ip : message }
         self.digs = {}
         # flag or time
-        self.netsplit = False
+        self.netsplit = time.time()+120
         self.tors = {}
         self.ping = None
         self.servers = {}
@@ -627,11 +627,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 cache[prefix] = '%s@%s' % (ident,host)
         except:
             cache[prefix] = '%s@%s' % (ident,host)
-        self.log.debug('%s is known as %s' % (prefix,cache[prefix]))
+        self.log.debug('%s is resolved as %s' % (prefix,cache[prefix]))
 
     def prefixToMask (self,irc,prefix):
         if prefix in cache:
-            self.log.debug('prefixToMask %s --> %s' % (prefix,cache[prefix]))
             return cache[prefix]
         (nick,ident,host) = ircutils.splitHostmask(prefix)
         if '/' in host:
@@ -964,16 +963,27 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not users or users < i.servers[server]:
                 found = server
                 users = i.servers[server]
-        i.ping = time.time()
-        irc.queueMsg(ircmsgs.IrcMsg('TIME %s.freenode.net' % found))
+        i.servers = {}
+        server = '%s.freenode.net' % found
+        i.servers[server] = time.time()
+        def bye():
+            if server in i.servers:
+                del i.servers[server]
+                if not i.netsplit:
+                    self.logChannel(irc,'INFO: netsplit activated for %ss due to %s/%ss of lags with %s : some abuses are ignored' % (self.registryValue('netsplitDuration'),self.regitryValue('lagPermit'),self.registryValue('lagPermit'),server))
+                i.netsplit = time.time() + self.registryValue('netsplitDuration')
+        schedule.addEvent(bye,time.time()+self.registryValue('lagPermit')+2)
+        irc.queueMsg(ircmsgs.IrcMsg('TIME %s' % server))
 
     def do391 (self,irc,msg):
         i = self.getIrc(irc)
-        delay = time.time()-i.ping
-        if delay > self.registryValue('lagPermit'):
-            if not i.netsplit:
-                self.logChannel(irc,'INFO: netsplit activated for %ss due to %s/%ss of lags with %s : some abuses are ignored' % (self.registryValue('netsplitDuration'),delay,self.registryValue('lagPermit'),msg.prefix))    
-            i.netsplit = time.time() + self.registryValue('netsplitDuration')
+        if msg.prefix in i.servers:
+            delay = time.time()-i.servers[msg.prefix]
+            del i.servers[msg.prefix]
+            if delay > self.registryValue('lagPermit'):
+                if not i.netsplit:
+                    self.logChannel(irc,'INFO: netsplit activated for %ss due to %s/%ss of lags with %s : some abuses are ignored' % (self.registryValue('netsplitDuration'),delay,self.registryValue('lagPermit'),msg.prefix))    
+                i.netsplit = time.time() + self.registryValue('netsplitDuration')
 
     def handleMsg (self,irc,msg,isNotice):
         if not ircutils.isUserHostmask(msg.prefix):
