@@ -36,11 +36,11 @@ import os
 import re
 import sys
 import time
-import socket
 import urllib
 import sqlite3
 import httplib
 import threading
+import dns.resolver
 
 import supybot.log as log
 import supybot.conf as conf
@@ -81,92 +81,6 @@ def isCloaked (prefix):
             return False
         return True
     return False
-
-def prefixToMask (irc,prefix):
-    if prefix in cache:
-        return cache[prefix]
-    (nick,ident,host) = ircutils.splitHostmask(prefix)
-    if '/' in host:
-        if host.startswith('gateway/web/freenode'):
-            if 'ip.' in host:
-                cache[prefix] = '*@%s' % host.split('ip.')[1]
-            else:
-                # syn offline / busy
-                cache[prefix] = '%s@gateway/web/freenode/*' % ident
-        elif host.startswith('gateway/tor-sasl'):
-            cache[prefix] = '*@%s' % host
-        elif host.startswith('gateway'):
-            h = host.split('/')
-            if 'ip.' in host:
-                ident = '*'
-                h = host.split('ip.')[1]
-            elif '/vpn/' in host:
-                if 'x-' in host:
-                    h = h[:3]
-                    h = '%s/*' % '/'.join(h)
-                else:
-                    h = host
-                if ident.startswith('~'):
-                    ident = '*'
-            elif len(h) > 3:
-                h = h[:3]
-                h = '%s/*' % '/'.join(h)
-            else:
-                h = host
-            cache[prefix] = '%s@%s' % (ident,h)
-        elif host.startswith('nat'):
-            h = host.split('/')
-            h = h[:2]
-            h = '%s/*' % '/'.join(h)
-            cache[prefix] = '%s@%s' % (ident,host)
-        else:
-            if ident.startswith('~'):
-                ident = '*'
-            cache[prefix] = '%s@%s' % (ident,host)
-    else:
-        if ident.startswith('~'):
-            ident = '*'
-        if utils.net.bruteIsIPV6(host):
-            h = host
-            if h.startswith('2400:6180:') or h.startswith('2604:a880:'):
-                h = '%s/116' % h
-            elif h.startswith('2600:3c01'):
-                h = '%s/124' % h
-            if not '/' in h:
-                a = h.split(':')
-                h = '%s:*' % ':'.join(a[:4])
-            cache[prefix] = '%s@%s' % (ident,h)
-        elif utils.net.isIPV4(host):
-            cache[prefix] = '%s@%s' % (ident,host)
-        else:
-            # TODO, do not resolve here, make a thread for resolve
-            try:
-                r = socket.getaddrinfo(host,None)
-                if r != None:
-                    u = {}
-                    L = []
-                    for item in r:
-                        if not item[4][0] in u:
-                            u[item[4][0]] = item[4][0]
-                            L.append(item[4][0])
-                    if len(L) == 1:
-                        h = L[0]
-                        if ':' in h:
-                            # digitalocean
-                            if h.startswith('2400:6180:') or h.startswith('2604:a880:'):
-                                h = '%s/116' % h
-                            elif h.startswith('2600:3c01'):
-                                h = '%s/124' % h
-                            if not '/' in h:
-                                a = h.split(':')
-                                if len(a) > 4:
-                                    h = '%s:*' % ':'.join(a[:4])
-                        cache[prefix] = '%s@%s' % (ident,h)
-                    else:
-                        cache[prefix] = '%s@%s' % (ident,host)
-            except:
-                cache[prefix] = '%s@%s' % (ident,host)
-    return cache[prefix]
 
 def compareString (a,b):
     """return 0 to 1 float percent of similarity ( 0.85 seems to be a good average )"""
@@ -269,7 +183,7 @@ class Ircd (object):
     def __repr__(self):
         return '%s(patterns=%r, queues=%r, channels=%r, pending=%r, logs=%r, digs=%r, limits=%r, whowas=%r, klines=%r)' % (self.__class__.__name__,
         self.patterns, self.queues, self.channels, self.pending, self.logs, self.digs, self.limits, self.whowas, self.klines)
-    
+
     def restore (self,db):
         c = db.cursor()
         c.execute("""SELECT id, pattern, regexp, mini, life FROM patterns WHERE removed_at is NULL""")
@@ -283,7 +197,7 @@ class Ircd (object):
                     regexp = False
                 self.patterns[uid] = Pattern(uid,pattern,regexp,limit,life)
         c.close()
-             
+
     def add (self,db,prefix,pattern,limit,life,regexp):
         c = db.cursor()
         t = 0
@@ -340,10 +254,9 @@ class Ircd (object):
                     if removed_by:
                         end = ' (disabled)'
                     results.append('[#%s "%s" (%s calls) %s/%ss%s]' % (uid,pattern,triggered,limit,life,end))
-                    
             return results
         return []
-    
+
     def edit (self,db,uid,limit,life,comment):
         c = db.cursor()
         uid = int(uid)
@@ -361,7 +274,7 @@ class Ircd (object):
             found = True
         c.close()
         return (len(items))
-        
+
     def toggle (self,db,uid,prefix,active):
         c = db.cursor()
         uid = int(uid)
@@ -382,7 +295,7 @@ class Ircd (object):
             db.commit()
         c.close()
         return updated
-        
+
 class Chan (object):
     def __init__(self,channel):
         self.channel = channel
@@ -404,7 +317,6 @@ class Pattern (object):
         self._match = False
         if regexp:
             self._match = utils.str.perlReToPythonRe(pattern)
-            
     def match (self,text):
         if self._match:
             return self._match.search (text) != None
@@ -441,13 +353,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     """Network and Channels Spam protections"""
     threaded = True
     noIgnore = True
-    
+
     def __init__(self, irc):
         callbacks.Plugin.__init__(self, irc)
         plugins.ChannelDBHandler.__init__(self)
         self._ircs = ircutils.IrcDict()
         self.getIrc(irc)
-    
+
     def state (self,irc,msg,args,channel,nick):
         """[<channel>] [<nick>]
 
@@ -457,7 +369,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if channel in i.channels:
                 chan = self.getChan(irc,channel)
                 if nick in chan.nicks:
-                    mask = prefixToMask(irc,chan.nicks[nick][1])
+                    mask = self.prefixToMask(irc,chan.nicks[nick][1])
                     logs = 0
                     buffers = 0
                     for k in chan.logs:
@@ -480,7 +392,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             irc.reply('%s active patterns and %s channels monitored' % (len(i.patterns),len(i.channels)))
         self.log.debug('%r',i)
     state = wrap(state,['owner',optional('channel'),optional('nick')])
-    
+
     def defcon (self,irc,msg,args):
         """takes no arguments
 
@@ -512,9 +424,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         clear plugin's state, buffers, cache etc"""
         cache = utils.structures.CacheDict(10000)
         self._ircs = ircutils.IrcDict()
-        irc.replySuccess()        
+        irc.replySuccess()
     clear = wrap(rehash,['owner'])
-    
+
     def efnet (self,irc,msg,args,duration):
         """<duration>
 
@@ -559,7 +471,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         else:
             irc.reply('no pattern found')
     lspattern = wrap(lspattern,['owner',getopts({'deep': ''}),'text'])
-    
+
     def addpattern (self,irc,msg,args,limit,life,pattern):
         """<limit> <life> <pattern>
 
@@ -579,7 +491,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         result = i.add(self.getDb(irc.network),msg.prefix,pattern[0],limit,life,True)
         self.logChannel(irc,'PATTERN: %s added #%s : "%s" %s/%ss' % (msg.nick,result,pattern[0],limit,life))
-        irc.reply('#%s added' % result)         
+        irc.reply('#%s added' % result)
     addregexpattern = wrap(addregexpattern,['owner','nonNegativeInt','positiveInt','getPatternAndMatcher'])
 
     def editpattern (self,irc,msg,args,uid,limit,life,comment):
@@ -652,10 +564,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         else:
             irc.reply('unknown channel')
     addtmp = wrap(addtmp,['op','text'])
-    
+
     def rmtmp (self,irc,msg,args,channel):
         """[<channel>]
-        
+
         remove temporary patterns for given channel"""
         i = self.getIrc(irc)
         if channel in i.channels:
@@ -684,14 +596,110 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         else:
             irc.replyError('operatorNick or operatorPassword is empty')
     oper = wrap(oper,['owner'])
-    
+
     # internal stuff
 
+    def resolve (self,irc,prefix):
+        (nick,ident,host) = ircutils.splitHostmask(prefix)
+        if ident.startswith('~'):
+            ident = '*'
+        try:
+            resolver = dns.resolver.Resolver()
+            resolver.timeout = self.registryValue('resolverTimeout')
+            resolver.lifetime = self.registryValue('resolverTimeout')
+            ips = resolver.query(host,'A')
+            L = []
+            for ip in ips:
+                L.append(str(ip))
+            if len(L) == 1:
+                h = L[0]
+                if ':' in h:
+                    if h.startswith('2400:6180:') or h.startswith('2604:a880:'):
+                        h = '%s/116' % h
+                    elif h.startswith('2600:3c01'):
+                        h = '%s/124' % h
+                    if not '/' in h:
+                        a = h.split(':')
+                        if len(a) > 4:
+                            h = '%s:*' % ':'.join(a[:4])
+                cache[prefix] = '%s@%s' % (ident,h)
+            else:
+                cache[prefix] = '%s@%s' % (ident,host)
+        except:
+            cache[prefix] = '%s@%s' % (ident,host)
+        self.log.debug('%s is known as %s' % (prefix,cache[prefix]))
+
+    def prefixToMask (self,irc,prefix):
+        if prefix in cache:
+            self.log.debug('prefixToMask %s --> %s' % (prefix,cache[prefix]))
+            return cache[prefix]
+        (nick,ident,host) = ircutils.splitHostmask(prefix)
+        if '/' in host:
+            if host.startswith('gateway/web/freenode'):
+                if 'ip.' in host:
+                    cache[prefix] = '*@%s' % host.split('ip.')[1]
+                else:
+                    # syn offline / busy
+                    cache[prefix] = '%s@gateway/web/freenode/*' % ident
+            elif host.startswith('gateway/tor-sasl'):
+                cache[prefix] = '*@%s' % host
+            elif host.startswith('gateway'):
+                h = host.split('/')
+                if 'ip.' in host:
+                    ident = '*'
+                    h = host.split('ip.')[1]
+                elif '/vpn/' in host:
+                    if 'x-' in host:
+                        h = h[:3]
+                        h = '%s/*' % '/'.join(h)
+                    else:
+                        h = host
+                    if ident.startswith('~'):
+                        ident = '*'
+                elif len(h) > 3:
+                    h = h[:3]
+                    h = '%s/*' % '/'.join(h)
+                else:
+                    h = host
+                cache[prefix] = '%s@%s' % (ident,h)
+            elif host.startswith('nat'):
+                h = host.split('/')
+                h = h[:2]
+                h = '%s/*' % '/'.join(h)
+                cache[prefix] = '%s@%s' % (ident,host)
+            else:
+                if ident.startswith('~'):
+                    ident = '*'
+                cache[prefix] = '%s@%s' % (ident,host)
+        else:
+            if ident.startswith('~'):
+                ident = '*'
+            if utils.net.isIPV4(host):
+                cache[prefix] = '%s@%s' % (ident,host)
+            elif utils.net.bruteIsIPV6(host):
+                h = host
+                if h.startswith('2400:6180:') or h.startswith('2604:a880:'):
+                    h = '%s/116' % h
+                elif h.startswith('2600:3c01'):
+                    h = '%s/124' % h
+                if not '/' in h:
+                    a = h.split(':')
+                    if len(a) > 4:
+                        h = '%s:*' % ':'.join(a[:4])
+                cache[prefix] = '%s@%s' % (ident,h)
+            else:
+                t = world.SupyThread(target=self.resolve,name=format('resolve %s', prefix),args=(irc,prefix))
+                t.setDaemon(True)
+                t.start()
+                return '%s@%s' % (ident,host)
+        return cache[prefix]
+
+
     def do001 (self,irc,msg):
-        i = self.getIrc(irc)    
+        i = self.getIrc(irc)
         if not i.opered:
             if len(self.registryValue('operatorNick')) and len(self.registryValue('operatorPassword')):
-                irc.queueMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))       
+                irc.queueMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
 
     def do381 (self,irc,msg):
         i = self.getIrc(irc)
@@ -722,7 +730,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if len(self.registryValue('operatorNick')) and len(self.registryValue('operatorPassword')):
                 irc.queueMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
         return self._ircs[irc.network]
-    
+
     def doAccount (self,irc,msg):
         if ircutils.isUserHostmask(msg.prefix):
             nick = ircutils.nickFromHostmask(msg.prefix)
@@ -738,13 +746,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             chan.nicks[msg.nick] = [a[0],a[1],a[2],a[3],acc]
                         else:
                             chan.nicks[msg.nick] = [a[0],a[1],a[2],'',acc]
-                
+
     def getChan (self,irc,channel):
         i = self.getIrc(irc)
         if not channel in i.channels:
             i.channels[channel] = Chan(channel)
         return i.channels[channel]
-    
+
     def kill (self,irc,nick,reason=None):
         i = self.getIrc(irc)
         if i.defcon:
@@ -758,7 +766,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if not reason:
             reason = self.registryValue('killMessage')
         irc.sendMsg(ircmsgs.IrcMsg('KILL %s :%s' % (nick,reason)))
-            
+
     def do338 (self,irc,msg):
         i = self.getIrc(irc)
         if msg.args[0] == irc.nick and msg.args[1] in i.whowas:
@@ -767,7 +775,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             (nick,ident,host) = ircutils.splitHostmask(pending[0])
             # [prefix,mask,duration,reason,klineMessage]
             ident = pending[1].split('@')[0]
-            mask = prefixToMask(irc,'%s!%s@%s' % (nick,ident,msg.args[2]))
+            mask = self.prefixToMask(irc,'%s!%s@%s' % (nick,ident,msg.args[2]))
             if not self.registryValue('enable'):
                 self.logChannel(irc,"INFO: disabled, can't kline %s (%s)" % (mask,pending[3]))
                 if pending[1] in i.klines:
@@ -801,7 +809,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             else:
                 # we must search ip behind cloak; user is already killed
                 if ircutils.isUserHostmask(prefix):
-                    # with pattern creation, we don't have nicks  
+                    # with pattern creation, we don't have nicks
                     canKline = False
                     (nick,ident,host) = ircutils.splitHostmask(prefix)
                     if not nick in i.whowas:
@@ -816,12 +824,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if mask in i.klines:
                 del i.klines[mask]
         schedule.addEvent(forgetKline,time.time()+7)
-            
+
     def ban (self,irc,nick,prefix,mask,duration,reason,message,log,killReason=None):
         self.kill(irc,nick,killReason)
         self.kline(irc,prefix,mask,duration,reason,message)
         self.logChannel(irc,log)
-        
+
     def getIrcQueueFor (self,irc,key,kind,life):
         i = self.getIrc(irc)
         if not key in i.queues:
@@ -869,21 +877,25 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             for port in ports:
                 request = '%s.%s.%s.%s' % (ipr,port,targetr,server)
                 try:
-                    result = socket.gethostbyname(request)
-                    self.log.debug('%s --> %s' % (ip,result))
-                    if result == '127.0.0.2':
-                        i.tors[ip] = True
+                    resolver = dns.resolver.Resolver()
+                    resolver.timeout = self.registryValue('resolverTimeout')
+                    resolver.lifetime = self.registryValue('resolverTimeout')
+                    result = resolver.query(request,'TXT')
+                    if result:
+                        for ip in result:
+                            if ip == '127.0.0.2':
+                                i.tors[ip] = True
+                                break
                     else:
                         if not ip in i.tors:
                             i.tors[ip] = False
-                except socket.error as err:
+                except:
                     if not ip in i.tors:
-                        self.log.debug('%s --> %s -> %s' % (ip,request,err))
                         i.tors[ip] = False
                 if ip in i.tors and i.tors[ip]:
                     break
         else:
-            i.tors[ip] = False    
+            i.tors[ip] = False
 
     def handleSaslMessage (self,irc,msg):
         (targets, text) = msg.args
@@ -935,7 +947,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     del i.tors[k]
         if self.registryValue('saslPermit') < 0:
             self.rmIrcQueueFor(irc,'sasl')
-                        
+
     def do015 (self,irc,msg):
         (targets,text) = msg.args
         i = self.getIrc(irc)
@@ -973,7 +985,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             text = ircmsgs.unAction(msg)
         raw = text
         text = text.lower()
-        mask = prefixToMask(irc,msg.prefix)
+        mask = self.prefixToMask(irc,msg.prefix)
         i = self.getIrc(irc)
         if not i.ping or time.time() - i.ping > self.registryValue('lagInterval'):
             if self.registryValue('lagPermit') > -1:
@@ -1055,7 +1067,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if time.time()-ts > ignoreDuration:
                         # TODO previously we do not ignore on chan.called or i.defcon
                         # could be 'not (chan.called or i.defcon)'
-                        isIgnored = True 
+                        isIgnored = True
                 reason = ''
                 if chan.patterns:
                     for pattern in chan.patterns:
@@ -1119,8 +1131,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if isIgnored:
                         bypassIgnore = self.isBadOnChannel(irc,channel,'bypassIgnore',mask)
                         if bypassIgnore:
-                            isBanned = True        
-                            reason = '%s %s' % (reason,bypassIgnore) 
+                            isBanned = True
+                            reason = '%s %s' % (reason,bypassIgnore)
                             log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
                             self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                         else:
@@ -1171,12 +1183,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                                 del i.queues[key]
                                         schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
                                         i.queues[key] = time.time()
-                                
+
     def doPrivmsg (self,irc,msg):
         self.handleMsg(irc,msg,False)
 
     def do903 (self,irc,msg):
-        irc.queueMsg(ircmsgs.IrcMsg('CAP REQ :extended-join account-notify'))    
+        irc.queueMsg(ircmsgs.IrcMsg('CAP REQ :extended-join account-notify'))
 
     def do215 (self,irc,msg):
         i = self.getIrc(irc)
@@ -1194,11 +1206,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if self.registryValue('saslChannel') in irc.state.channels:
                     irc.queueMsg(ircmsgs.privmsg(self.registryValue('saslChannel'),'IGNORED %s due to iline (%s)' % (i.dline,msg.args[2])))
         i.dline = ''
-    
+
     def do401 (self,irc,msg):
         # already removed nick from kill
         t = True
-    
+
     def do726 (self,irc,msg):
         # other ircd
         i = self.getIrc(irc)
@@ -1220,13 +1232,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if targets[0] == irc.nick and targets[1] == 'remoteban':
                 if self.registryValue('saslChannel') in irc.state.channels:
                     irc.queueMsg(ircmsgs.privmsg(self.registryValue('saslChannel'),text))
-    
+
     def handleFloodSnote (self,irc,text):
         user = text.split('Possible Flooder ')[1]
         a = user[::-1]
         ar = a.split(']',1)
         ar.reverse()
-        ar.pop()                    
+        ar.pop()
         user = "%s" % ar[0]
         user = user.replace('[','!',1)
         user = '%s' % user[::-1]
@@ -1292,11 +1304,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     #else:
                         #reason = 'flooded %s (snote)' % target
                         #for spammer in users:
-                            #mask = prefixToMask(irc,spammer)
+                            #mask = self.prefixToMask(irc,spammer)
                             #log = 'BAD: %s flooded %s (snote) -> %s' (spammer,target,mask)
                             #(sn,si,sh) = ircutils.splitHostmask(spammer)
                             #self.ban(irc,sn,spammer,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log)
-    
+
     def handleJoinSnote (self,irc,text):
         limit = self.registryValue('joinRatePermit')
         life = self.registryValue('joinRateLife')
@@ -1352,7 +1364,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             del i.queues[user][key]
                 i.queues[user][key] = time.time()
                 schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
-                
+
     def handleIdSnote (self,irc,text):
         target = text.split('failed login attempts to ')[1].split('.')[0].strip()
         user = text.split('Last attempt received from ')[1].split(' on')[0].strip()
@@ -1402,7 +1414,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             del i.queues[target][key]
                 i.queues[target][key] = time.time()
                 schedule.addEvent(rct,time.time()+self.registryValue('alertPeriod'))
-                
+
     def handleKline(self,irc,text):
         if self.registryValue('alertOnWideKline') > -1:
             i = self.getIrc(irc)
@@ -1417,7 +1429,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             user = user.strip()
             if not ircutils.isUserHostmask(user):
                 return
-            mask = prefixToMask(irc,user)
+            mask = self.prefixToMask(irc,user)
             mask = '*@%s' % mask.split('@')[1]
             queue = self.getIrcQueueFor(irc,mask,'klineNote',7)
             queue.enqueue(user)
@@ -1433,7 +1445,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         del i.queues[mask][key]
                 self.rmIrcQueueFor(irc,mask)
             schedule.addEvent(rct,time.time()+8)
-                
+
     def doNotice (self,irc,msg):
         (targets, text) = msg.args
         if len(targets) and targets[0] == '*':
@@ -1466,7 +1478,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if len(chan.buffers[kind][key]) > limit:
                     return True
         return False
- 
+
     def isAbuseOnChannel (self,irc,channel,key,mask):
         chan = self.getChan(irc,channel)
         kind = 'abuse'
@@ -1494,9 +1506,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not chan.called:
                 self.logChannel(irc,"INFO: ignores lifted and triggers thresholds lowered in %s due to %s abuses for %ss at least" % (channel,key,self.registryValue('abuseDuration'))) 
             chan.called = time.time()
-            return True        
+            return True
         return False
-    
+
     def isBadOnChannel (self,irc,channel,kind,key):
         chan = self.getChan(irc,channel)
         limit = self.registryValue('%sPermit' % kind,channel=channel)
@@ -1527,11 +1539,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.isAbuseOnChannel(irc,channel,kind,key)
             return '%s %s/%ss in %s' % (kind,limit,life,channel)
         return False
-    
+
     def isChannelCtcp (self,irc,msg,channel,mask,text):
         return self.isBadOnChannel(irc,channel,'ctcp',mask)
 
-    def isChannelLowFlood (self,irc,msg,channel,mask,text): 
+    def isChannelLowFlood (self,irc,msg,channel,mask,text):
         return self.isBadOnChannel(irc,channel,'lowFlood',mask)
 
     def isChannelFlood (self,irc,msg,channel,mask,text):
@@ -1541,10 +1553,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def isChannelHilight (self,irc,msg,channel,mask,text):
         return self.isHilight(irc,msg,channel,mask,text,False)
-        
+
     def isChannelLowHilight (self,irc,msg,channel,mask,text):
         return self.isHilight(irc,msg,channel,mask,text,True)
-        
+
     def isHilight (self,irc,msg,channel,mask,text,low):
         kind = 'hilight'
         if low:
@@ -1576,10 +1588,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def isChannelRepeat (self,irc,msg,channel,mask,text):
         return self.isRepeat(irc,msg,channel,mask,text,False)
-    
+
     def isChannelLowRepeat (self,irc,msg,channel,mask,text):
         return self.isRepeat(irc,msg,channel,mask,text,True)
-    
+
     def isRepeat(self,irc,msg,channel,mask,text,low):
         kind = 'repeat'
         key = mask
@@ -1656,7 +1668,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         candidate = candidate.strip()
                         chan.patterns.enqueue(candidate)
                         self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,candidate,self.registryValue('computedPatternLife',channel=channel),kind))
-                        # maybe, instead of awaiting for others repeated messages before kline, we could return 
+                        # maybe, instead of awaiting for others repeated messages before kline, we could return
                         # and remove others users which matchs ..
                         # return 'repeat pattern creation'
         logs.enqueue(text)
@@ -1667,7 +1679,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def isChannelLowMassRepeat (self,irc,msg,channel,mask,text):
         return self.isMassRepeat(irc,msg,channel,mask,text,True)
-    
+
     def isMassRepeat (self,irc,msg,channel,mask,text,low):
         kind = 'massRepeat'
         key = 'mass Repeat'
@@ -1750,7 +1762,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             return result
         return False
 
-    
     def logChannel(self,irc,message):
         channel = self.registryValue('logChannel')
         i = self.getIrc(irc)
@@ -1802,19 +1813,21 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def dig (self,irc,channel,prefix):
         # this method is called in threads to avoid to lock the bot during calls
         i = self.getIrc(irc)
-        mask = prefixToMask(irc,prefix)
+        mask = self.prefixToMask(irc,prefix)
         ip = mask.split('@')[1]
         h = '.'.join(ip.split('.')[::-1])
         h = h + '.rbl.efnetrbl.org'
         m = None
         try:
-            m = socket.gethostbyname(h)
-        except socket.error as err:
-            self.log.debug('%s -> %s -> %s' % (ip,h,err))
+            resolver = dns.resolver.Resolver()
+            resolver.timeout = self.registryValue('resolverTimeout')
+            resolver.lifetime = self.registryValue('resolverTimeout')
+            m = resolver.query(h,'TXT')
+        except:
             m = None
         message = None
         if m:
-            for entry in m.split('\n'):
+            for entry in m:
                 if entry == '127.0.0.1':
                     message = 'Open Proxy'
                     break
@@ -1865,7 +1878,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if ircdb.checkCapability(msg.prefix, 'protected'):
             return
         i = self.getIrc(irc)
-        mask = prefixToMask(irc,msg.prefix)
+        mask = self.prefixToMask(irc,msg.prefix)
         prefix = msg.prefix
         gecos = None
         account = None
@@ -1902,7 +1915,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             t = world.SupyThread(target=self.dig,name=format('Dig %s for %s', msg.prefix, ','.join(channels)),args=(irc,channel,msg.prefix))
                             t.setDaemon(True)
                             t.start()
-                                    
+
     def doPart (self,irc,msg):
         channels = msg.args[0].split(',')
         i = self.getIrc(irc)
@@ -1914,7 +1927,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if channel in i.channels:
                         del i.channels[channel]
             return
-        mask = prefixToMask(irc,msg.prefix)
+        mask = self.prefixToMask(irc,msg.prefix)
         isBanned = False
         reason = ''
         if len(msg.args) == 2:
@@ -1949,7 +1962,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if self.registryValue('cycleLife') > duration:
             duration = self.registryValue('cycleLife')
         schedule.addEvent(rm,time.time()+duration+1)
-                
+
     def doKick (self,irc,msg):
         channel = target = reason = None
         if len(msg.args) == 3:
@@ -1968,7 +1981,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if self.registryValue('cycleLife') > duration:
                 duration = self.registryValue('cycleLife')
             schedule.addEvent(rm,time.time()+duration+1)
-        
+
     def doQuit (self,irc,msg):
         if msg.prefix == irc.prefix:
             return
@@ -1981,7 +1994,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not i.netsplit:
                 self.logChannel(irc,'INFO: netsplit activated for %ss : some abuses are ignored' % self.registryValue('netsplitDuration'))
             i.netsplit = time.time() + self.registryValue('netsplitDuration')
-        mask = prefixToMask(irc,msg.prefix)
+        mask = self.prefixToMask(irc,msg.prefix)
         isBanned = False
         (nick,ident,host) = ircutils.splitHostmask(msg.prefix)
         for channel in irc.state.channels:
@@ -1996,7 +2009,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     bad = self.isBadOnChannel(irc,channel,'broken',mask)
                     if isBanned:
                         continue
-                    if bad and not i.netsplit:       
+                    if bad and not i.netsplit:
                         self.kline(irc,msg.prefix,mask,self.registryValue('brokenDuration'),'%s in %s' % ('join/quit flood',channel),self.registryValue('brokenReason') % self.registryValue('brokenDuration'))
                         self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,'broken client',mask))
                         isBanned = True
@@ -2027,14 +2040,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if self.registryValue('cycleLife') > duration:
             duration = self.registryValue('cycleLife')
         schedule.addEvent(rm,time.time()+duration+1)
-        
+
     def doNick (self,irc,msg):
         oldNick = msg.prefix.split('!')[0]
         newNick = msg.args[0]
         if oldNick == irc.nick or newNick == irc.nick:
             return
         newPrefix = '%s!%s' % (newNick,msg.prefix.split('!')[1])
-        mask = prefixToMask(irc,newPrefix)
+        mask = self.prefixToMask(irc,newPrefix)
         i = self.getIrc(irc)
         isBanned = False
         for channel in irc.state.channels:
@@ -2081,10 +2094,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     self.ban(irc,newNick,newPrefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log)
                                     isBanned = True
                     del chan.nicks[oldNick]
-        
+
     def reset(self):
         self._ircs = ircutils.IrcDict()
-    
+
     def die(self):
         try:
             conf.supybot.protocols.irc.throttleTime.setValue(1.6)
@@ -2094,7 +2107,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def doError (self,irc,msg):
         self._ircs = ircutils.IrcDict()
-    
+
     def makeDb(self, filename):
         """Create a database and connect to it."""
         if os.path.exists(filename):
@@ -2120,7 +2133,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         db.commit()
         c.close()
         return db
-    
+
     def getDb(self, irc):
         """Use this to get a database for a specific irc."""
         currentThread = threading.currentThread()
