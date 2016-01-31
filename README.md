@@ -1,6 +1,6 @@
 # Sigyn #
 
-A supybot's plugin to handle various spam with network hammer
+A Limnoria's plugin to handle various spam with network hammer
 
 ## Commands ##
 
