@@ -179,6 +179,7 @@ class Ircd (object):
         self.tors = {}
         self.ping = None
         self.servers = {}
+        self.resolving = {}
 
     def __repr__(self):
         return '%s(patterns=%r, queues=%r, channels=%r, pending=%r, logs=%r, digs=%r, limits=%r, whowas=%r, klines=%r)' % (self.__class__.__name__,
@@ -646,6 +647,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 cache[prefix] = '%s@%s' % (ident,host)
         except:
             cache[prefix] = '%s@%s' % (ident,host)
+        i = self.getIrc(irc)
+        if prefix in i.resolving:
+            del i.resolving[prefix]
         self.log.debug('%s is resolved as %s' % (prefix,cache[prefix]))
 
     def prefixToMask (self,irc,prefix):
@@ -706,9 +710,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         h = '%s:*' % ':'.join(a[:4])
                 cache[prefix] = '%s@%s' % (ident,h)
             else:
-                t = world.SupyThread(target=self.resolve,name=format('resolve %s', prefix),args=(irc,prefix))
-                t.setDaemon(True)
-                t.start()
+                i = self.getIrc(irc)
+                if not prefix in i.resolving:
+                    i.resolving[prefix] = True
+                    t = world.SupyThread(target=self.resolve,name=format('resolve %s', prefix),args=(irc,prefix))
+                    t.setDaemon(True)
+                    t.start()
                 return '%s@%s' % (ident,host)
         return cache[prefix]
 
@@ -967,12 +974,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self.rmIrcQueueFor(irc,'sasl')
 
     def do015 (self,irc,msg):
-        (targets,text) = msg.args
-        i = self.getIrc(irc)
-        reg = r".*\s+([a-z]+)\.freenode\.net.*:\s+(\d{2,6})\s+"
-        result = re.match(reg,text)
-        if result:
-            i.servers[result.group(1)] = int(result.group(2))
+        try:
+            (targets,text) = msg.args
+            i = self.getIrc(irc)
+            reg = r".*\s+([a-z]+)\.freenode\.net.*:\s+(\d{2,6})\s+"
+            result = re.match(reg,text)
+            if result:
+                i.servers[result.group(1)] = int(result.group(2))
+        except:
+            self.log.debug('%s gone' % msg.prefix)
 
     def do017 (self,irc,msg):
         found = None
@@ -1382,7 +1392,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 break
         if not stored:
             queue.enqueue(target)
-        if len(queue) > limit*5:
+        if len(queue) > limit*6:
             channels = list(queue)
             queue.reset()
             if not key in i.queues[user]:
@@ -1798,10 +1808,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             msg = ircmsgs.privmsg(channel,message)
             if self.registryValue('useNotice'):
                 msg = ircmsgs.notice(channel,message)
-            if i.opered:
-                irc.sendMsg(msg)
-            else:
-                irc.queueMsg(msg)
+            irc.queueMsg(msg)
 
     def rmNick (self,irc,nick,force=False):
         # here we clear queues, logs, buffers whatever filled by a user
