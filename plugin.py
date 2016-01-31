@@ -175,7 +175,7 @@ class Ircd (object):
         # { ip : message }
         self.digs = {}
         # flag or time
-        self.netsplit = time.time()+120
+        self.netsplit = False
         self.tors = {}
         self.ping = None
         self.servers = {}
@@ -360,43 +360,62 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self._ircs = ircutils.IrcDict()
         self.getIrc(irc)
 
-    def state (self,irc,msg,args,channel,nick):
-        """[<channel>] [<nick>]
+    def state (self,irc,msg,args,channel):
+        """[<channel>]
 
-        returns state of the plugin, for optional <channel> and optional <nick>"""
+        returns state of the plugin, for optional <channel>"""
         i = self.getIrc(irc)
-        if channel:
-            if channel in i.channels:
-                chan = self.getChan(irc,channel)
-                if nick in chan.nicks:
-                    mask = self.prefixToMask(irc,chan.nicks[nick][1])
-                    logs = 0
-                    buffers = 0
-                    for k in chan.logs:
-                        if mask in k:
-                            logs = logs + 1
-                    for k in chan.buffers:
-                        if mask in k:
-                            buffers = buffers + 1
-                    irc.reply('%s has %s logs, %s buffers in %s' % (nick,logs,buffers,channel))
-                elif nick:
-                    irc.reply('%s is not monitored in %s' % (nick,channel))
-                else:
-                    patterns = 0
-                    if chan.patterns:
-                        patterns = len(chan.patterns)
-                    irc.reply('%s has %s active patterns, %s buffers, %s logs and %s nicks' % (channel,patterns,len(chan.buffers),len(chan.logs),len(chan.nicks)))
-            else:
-                irc.reply('%s is not monitored' % channel)
-        else:
-            irc.reply('%s active patterns and %s channels monitored' % (len(i.patterns),len(i.channels)))
-        self.log.debug('%r',i)
-    state = wrap(state,['owner',optional('channel'),optional('nick')])
+        if not channel:
+            irc.queueMsg(ircmsgs.privmsg(msg.nick,'Opered %s, enable %s, defcon %s, netsplit %s, efnet %s' % (i.opered,self.registryValue('enable'),(i.defcon),i.netsplit,i.efnet)))
+            irc.queueMsg(ircmsgs.privmsg(msg.nick,'There is %s permanent patterns and %s channels directly monitored' % (len(i.patterns),len(i.channels))))
+            channels = 0
+            prefixs = 0
+            for k in i.queues:
+                if irc.isChannel(k):
+                    channels += 1
+                elif ircutils.isUserHostmask(k):
+                    prefixs += 1
+            irc.queueMsg(ircmsgs.privmsg(msg.nick,"Via server's notices: %s channels and %s users monitored" % (channels,prefixs)))
+        for chan in i.channels:
+            if channel == chan or not channel:
+                ch = self.getChan(irc,chan)
+                if not self.registryValue('ignoreChannel',channel=chan):
+                    irc.queueMsg(ircmsgs.privmsg(msg.nick,'On %s (%s users) :' % (chan,len(ch.nicks))))
+                    protections = ['flood','lowFlood','repeat','lowRepeat','massRepeat','lowMassRepeat','hilight','nick','ctcp']
+                    for protection in protections:
+                        if self.registryValue('%sPermit' % protection,channel=chan) > -1:
+                            permit = self.registryValue('%sPermit' % protection,channel=chan) 
+                            life = self.registryValue('%sLife' % protection,channel=chan) 
+                            abuse = self.hasAbuseOnChannel(irc,chan,protection)
+                            if abuse:
+                                abuse = ' (ongoing abuses) '
+                            else:
+                                abuse = ''
+                            count = 0
+                            if protection == 'repeat':
+                                for b in ch.buffers:
+                                    if ircutils.isUserHostmask('n!%s' % b):
+                                        count += 1
+                            else:
+                                for b in ch.buffers:
+                                    if protection in b:
+                                        count += len(ch.buffers[b])
+                            if count:
+                                count = " - %s user's buffers" % count
+                            else:
+                                count = ""
+                            irc.queueMsg(ircmsgs.privmsg(msg.nick," - %s : %s/%ss %s%s" % (protection,permit,life,abuse,count)))
+                            
+                                
+                    
+        
+        irc.replySuccess()
+    state = wrap(state,['owner',optional('channel')])
 
     def defcon (self,irc,msg,args):
         """takes no arguments
 
-        force bot to enter in defcon mode: lowered triggers limits, no ignore, kline of hosts in efnet's dnsbl, bot is less tolerant against abuse"""
+        force bot to enter in defcon mode: lowered triggers limits, no ignore, klself.hasAbuseOnChannel(irc,channel,'massRepeat'):ine of hosts in efnet's dnsbl, bot is less tolerant against abuse"""
         i = self.getIrc(irc)
         if i.defcon:
             i.defcon = time.time()
