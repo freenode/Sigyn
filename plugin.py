@@ -378,7 +378,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     prefixs += 1
             irc.queueMsg(ircmsgs.privmsg(msg.nick,"Via server's notices: %s channels and %s users monitored" % (channels,prefixs)))
         for chan in i.channels:
-            if channel == chan or not channel:
+            if channel == chan:
                 ch = self.getChan(irc,chan)
                 if not self.registryValue('ignoreChannel',channel=chan):
                     irc.queueMsg(ircmsgs.privmsg(msg.nick,'On %s (%s users) :' % (chan,len(ch.nicks))))
@@ -634,10 +634,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if len(L) == 1:
                 h = L[0]
                 if ':' in h:
-                    if h.startswith('2400:6180:') or h.startswith('2604:a880:'):
+                    if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:'):
                         h = '%s/116' % h
                     elif h.startswith('2600:3c01'):
                         h = '%s/124' % h
+              
                     if not '/' in h:
                         a = h.split(':')
                         if len(a) > 4:
@@ -700,7 +701,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 cache[prefix] = '%s@%s' % (ident,host)
             elif utils.net.bruteIsIPV6(host):
                 h = host
-                if h.startswith('2400:6180:') or h.startswith('2604:a880:'):
+                if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:'):
                     h = '%s/116' % h
                 elif h.startswith('2600:3c01'):
                     h = '%s/124' % h
@@ -732,7 +733,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             i.opered = True
             irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bf' % irc.nick))
             try:
-                conf.supybot.protocols.irc.throttleTime.setValue(0.01)
+                conf.supybot.protocols.irc.throttleTime.setValue(0.2)
             except:
                 t = True
 
@@ -909,6 +910,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if result:
                         for ip in result:
                             if ip == '127.0.0.2':
+                                self.log.debug('Tor : %s : %s is a tor exit node' % (request,ip))
                                 i.tors[ip] = True
                                 break
                     else:
@@ -982,7 +984,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if result:
                 i.servers[result.group(1)] = int(result.group(2))
         except:
-            self.log.debug('%s gone' % msg.prefix)
+            self.log.debug('do015, a server gone')
 
     def do017 (self,irc,msg):
         found = None
@@ -1003,6 +1005,18 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 i.netsplit = time.time() + self.registryValue('netsplitDuration')
         schedule.addEvent(bye,time.time()+self.registryValue('lagPermit')+2)
         irc.queueMsg(ircmsgs.IrcMsg('TIME %s' % server))
+        try:
+            resolver = dns.resolver.Resolver()
+            resolver.timeout = self.registryValue('resolverTimeout')
+            resolver.lifetime = self.registryValue('resolverTimeout')
+            ips = resolver.query(server,'A')
+            for ip in ips:
+                if utils.net.isIPV4(str(ip)):
+                    self.log.debug('do017 updated torTarget with %s : %s' % (server,str(ip)))
+                    conf.supybot.plugins.Sigyn.torTarget.setValue(str(ip))
+                    break
+        except:
+            self.log.debug('do017 torTarget not updated')
 
     def do391 (self,irc,msg):
         i = self.getIrc(irc)
