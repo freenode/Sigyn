@@ -62,10 +62,6 @@ try:
 except:
     _ = lambda x:x
 
-# store in memory user's fullmask best subset for klines and clones detection
-# cache[nick!ident@host] = see prefixToMask
-cache = utils.structures.CacheDict(10000)
-
 def repetitions(s):
     # returns a list of (pattern,count), used to detect a repeated pattern inside a single string.
     r = re.compile(r"(.+?)\1+")
@@ -359,8 +355,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         callbacks.Plugin.__init__(self, irc)
         plugins.ChannelDBHandler.__init__(self)
         self._ircs = ircutils.IrcDict()
+        self.cache = utils.structures.CacheDict(10000)
         self.getIrc(irc)
-
+       
     def state (self,irc,msg,args,channel):
         """[<channel>]
 
@@ -416,7 +413,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def defcon (self,irc,msg,args):
         """takes no arguments
 
-        force bot to enter in defcon mode: lowered triggers limits, no ignore, klself.hasAbuseOnChannel(irc,channel,'massRepeat'):ine of hosts in efnet's dnsbl, bot is less tolerant against abuse"""
+        force bot to enter in defcon mode: lowered triggers limits, no ignore, kline of hosts in efnet's dnsbl, bot is less tolerant against abuse"""
         i = self.getIrc(irc)
         if i.defcon:
             i.defcon = time.time()
@@ -442,7 +439,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         """takes no arguments
 
         clear plugin's state, buffers, cache etc"""
-        cache = utils.structures.CacheDict(10000)
+        self.cache = utils.structures.CacheDict(10000)
         self._ircs = ircutils.IrcDict()
         irc.replySuccess()
     clear = wrap(rehash,['owner'])
@@ -619,7 +616,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     # internal stuff
 
-    def resolve (self,irc,prefix):
+    def resolve (self,irc,prefix,channel=''):
         (nick,ident,host) = ircutils.splitHostmask(prefix)
         if ident.startswith('~'):
             ident = '*'
@@ -629,8 +626,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             resolver.lifetime = self.registryValue('resolverTimeout')
             ips = resolver.query(host,'A')
             L = []
-            for ip in ips:
-                L.append(str(ip))
+            if ips:
+                for ip in ips:
+                    L.append(str(ip))
             if len(L) == 1:
                 h = L[0]
                 if ':' in h:
@@ -638,34 +636,39 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         h = '%s/116' % h
                     elif h.startswith('2600:3c01'):
                         h = '%s/124' % h
-              
                     if not '/' in h:
                         a = h.split(':')
                         if len(a) > 4:
                             h = '%s:*' % ':'.join(a[:4])
-                cache[prefix] = '%s@%s' % (ident,h)
+                self.log.debug('%s is resolved as %s@%s' % (prefix,ident,h))
+                self.cache[prefix] = '%s@%s' % (ident,h)
+                if utils.net.isIPV4(h) and channel:
+                    key = 'dig %s' % h
+                    i = self.getIrc(irc)
+                    if not key in i.pending:
+                        i.pending[key] = True
+                        self.dig(irc,channel,prefix)
             else:
-                cache[prefix] = '%s@%s' % (ident,host)
+                self.cache[prefix] = '%s@%s' % (ident,host)
         except:
-            cache[prefix] = '%s@%s' % (ident,host)
+            self.cache[prefix] = '%s@%s' % (ident,host)
         i = self.getIrc(irc)
         if prefix in i.resolving:
             del i.resolving[prefix]
-        self.log.debug('%s is resolved as %s' % (prefix,cache[prefix]))
 
-    def prefixToMask (self,irc,prefix):
-        if prefix in cache:
-            return cache[prefix]
+    def prefixToMask (self,irc,prefix,channel=''):
+        if prefix in self.cache:
+            return self.cache[prefix]
         (nick,ident,host) = ircutils.splitHostmask(prefix)
         if '/' in host:
             if host.startswith('gateway/web/freenode'):
                 if 'ip.' in host:
-                    cache[prefix] = '*@%s' % host.split('ip.')[1]
+                    self.cache[prefix] = '*@%s' % host.split('ip.')[1]
                 else:
                     # syn offline / busy
-                    cache[prefix] = '%s@gateway/web/freenode/*' % ident
+                    self.cache[prefix] = '%s@gateway/web/freenode/*' % ident
             elif host.startswith('gateway/tor-sasl'):
-                cache[prefix] = '*@%s' % host
+                self.cache[prefix] = '*@%s' % host
             elif host.startswith('gateway'):
                 h = host.split('/')
                 if 'ip.' in host:
@@ -684,21 +687,21 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     h = '%s/*' % '/'.join(h)
                 else:
                     h = host
-                cache[prefix] = '%s@%s' % (ident,h)
+                self.cache[prefix] = '%s@%s' % (ident,h)
             elif host.startswith('nat'):
                 h = host.split('/')
                 h = h[:2]
                 h = '%s/*' % '/'.join(h)
-                cache[prefix] = '%s@%s' % (ident,host)
+                self.cache[prefix] = '%s@%s' % (ident,host)
             else:
                 if ident.startswith('~'):
                     ident = '*'
-                cache[prefix] = '%s@%s' % (ident,host)
+                self.cache[prefix] = '%s@%s' % (ident,host)
         else:
             if ident.startswith('~'):
                 ident = '*'
             if utils.net.isIPV4(host):
-                cache[prefix] = '%s@%s' % (ident,host)
+                self.cache[prefix] = '%s@%s' % (ident,host)
             elif utils.net.bruteIsIPV6(host):
                 h = host
                 if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:'):
@@ -709,17 +712,21 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     a = h.split(':')
                     if len(a) > 4:
                         h = '%s:*' % ':'.join(a[:4])
-                cache[prefix] = '%s@%s' % (ident,h)
+                self.cache[prefix] = '%s@%s' % (ident,h)
             else:
                 i = self.getIrc(irc)
                 if not prefix in i.resolving:
                     i.resolving[prefix] = True
-                    t = world.SupyThread(target=self.resolve,name=format('resolve %s', prefix),args=(irc,prefix))
+                    t = world.SupyThread(target=self.resolve,name=format('resolve %s', prefix),args=(irc,prefix,channel))
                     t.setDaemon(True)
                     t.start()
                 return '%s@%s' % (ident,host)
-        return cache[prefix]
-
+        if prefix in self.cache:
+            return self.cache[prefix]
+        else:
+            if ident.startswith('~'):
+                ident = '*'
+            return '%s@%s' % (ident,host)
 
     def do001 (self,irc,msg):
         i = self.getIrc(irc)
@@ -906,9 +913,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     resolver = dns.resolver.Resolver()
                     resolver.timeout = self.registryValue('resolverTimeout')
                     resolver.lifetime = self.registryValue('resolverTimeout')
-                    result = resolver.query(request,'TXT')
+                    result = resolver.query(request,'A')
                     if result:
                         for ip in result:
+                            ip = str(ip)
                             if ip == '127.0.0.2':
                                 self.log.debug('Tor : %s : %s is a tor exit node' % (request,ip))
                                 i.tors[ip] = True
@@ -1872,12 +1880,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             resolver = dns.resolver.Resolver()
             resolver.timeout = self.registryValue('resolverTimeout')
             resolver.lifetime = self.registryValue('resolverTimeout')
-            m = resolver.query(h,'TXT')
+            m = resolver.query(h,'A')
         except:
-            m = None
+           m = None
         message = None
         if m:
             for entry in m:
+                entry = str(entry)
                 if entry == '127.0.0.1':
                     message = 'Open Proxy'
                     break
@@ -1887,6 +1896,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 elif entry == '127.0.0.5':
                     message = 'Drone/Irc bot'
                     break
+        self.log.debug('%s (%s) efnetrbl : %s' % (prefix,ip,message))
         if message:
             if not ip in i.digs:
                 i.digs[ip] = message
@@ -1928,7 +1938,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if ircdb.checkCapability(msg.prefix, 'protected'):
             return
         i = self.getIrc(irc)
-        mask = self.prefixToMask(irc,msg.prefix)
         prefix = msg.prefix
         gecos = None
         account = None
@@ -1943,6 +1952,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     continue
                 chan = self.getChan(irc,channel)
                 t = time.time()
+                mask = self.prefixToMask(irc,msg.prefix,channel)
                 if isCloaked(msg.prefix):
                     t = t - self.registryValue('ignoreDuration',channel=channel) - 1
                 chan.nicks[msg.nick] = [t,msg.prefix,mask,gecos,account]
