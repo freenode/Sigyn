@@ -37,6 +37,8 @@ First measure :
 
     defaultcapability remove protected
 
+You should also change supybot.plugins.Sigyn.lagInterval to some minutes at least as it's also used for internal state cleanup.
+
 If you are familiar with ChanTracker, settings in config.py should be easy to understand.
 
     supybot.plugins.Sigyn.enable

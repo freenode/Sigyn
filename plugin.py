@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env/python
 #
 # -*- coding: utf-8 -*-
 
@@ -362,6 +362,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         """[<channel>]
 
         returns state of the plugin, for optional <channel>"""
+        self.cleanup(irc)
         i = self.getIrc(irc)
         if not channel:
             irc.queueMsg(ircmsgs.privmsg(msg.nick,'Opered %s, enable %s, defcon %s, netsplit %s, efnet %s' % (i.opered,self.registryValue('enable'),(i.defcon),i.netsplit,i.efnet)))
@@ -402,11 +403,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 count = " - %s user's buffers" % count
                             else:
                                 count = ""
-                            irc.queueMsg(ircmsgs.privmsg(msg.nick," - %s : %s/%ss %s%s" % (protection,permit,life,abuse,count)))
-                            
-                                
-                    
-        
+                            irc.queueMsg(ircmsgs.privmsg(msg.nick," - %s : %s/%ss %s%s" % (protection,permit,life,abuse,count)))        
+        self.log.debug('%r' % i)
         irc.replySuccess()
     state = wrap(state,['owner',optional('channel')])
 
@@ -1002,29 +1000,93 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not users or users < i.servers[server]:
                 found = server
                 users = i.servers[server]
-        i.servers = {}
-        server = '%s.freenode.net' % found
-        i.servers[server] = time.time()
-        def bye():
-            if server in i.servers:
-                del i.servers[server]
-                if not i.netsplit:
-                    self.logChannel(irc,'INFO: netsplit activated for %ss due to %s/%ss of lags with %s : some abuses are ignored' % (self.registryValue('netsplitDuration'),self.regitryValue('lagPermit'),self.registryValue('lagPermit'),server))
-                i.netsplit = time.time() + self.registryValue('netsplitDuration')
-        schedule.addEvent(bye,time.time()+self.registryValue('lagPermit')+2)
-        irc.queueMsg(ircmsgs.IrcMsg('TIME %s' % server))
+        server = None
+        if found:
+            i.servers = {}
+            server = '%s.freenode.net' % found
+            i.servers[server] = time.time()
+            def bye():
+                if server in i.servers:
+                    del i.servers[server]
+                    if not i.netsplit:
+                        self.logChannel(irc,'INFO: netsplit activated for %ss due to %s/%ss of lags with %s : some abuses are ignored' % (self.registryValue('netsplitDuration'),self.regitryValue('lagPermit'),self.registryValue('lagPermit'),server))
+                    i.netsplit = time.time() + self.registryValue('netsplitDuration')
+            schedule.addEvent(bye,time.time()+self.registryValue('lagPermit')+2)
+            irc.queueMsg(ircmsgs.IrcMsg('TIME %s' % server))
         try:
-            resolver = dns.resolver.Resolver()
-            resolver.timeout = self.registryValue('resolverTimeout')
-            resolver.lifetime = self.registryValue('resolverTimeout')
-            ips = resolver.query(server,'A')
-            for ip in ips:
-                if utils.net.isIPV4(str(ip)):
-                    self.log.debug('do017 updated torTarget with %s : %s' % (server,str(ip)))
-                    conf.supybot.plugins.Sigyn.torTarget.setValue(str(ip))
-                    break
+            if server:
+                resolver = dns.resolver.Resolver()
+                resolver.timeout = self.registryValue('resolverTimeout')
+                resolver.lifetime = self.registryValue('resolverTimeout')
+                ips = resolver.query(server,'A')
+                for ip in ips:
+                    if utils.net.isIPV4(str(ip)):
+                        conf.supybot.plugins.Sigyn.torTarget.setValue(str(ip))
+                        break
         except:
             self.log.debug('do017 torTarget not updated')
+
+    def cleanup (self,irc):
+        i = self.getIrc(irc)
+        kinds = []
+        for kind in i.queues:
+            count = 0
+            ks = []
+            for k in i.queues[kind]:
+                #self.log.debug('kind %s : %s' % (kind,k))
+                if isinstance(i.queues[kind][k],utils.structures.TimeoutQueue):
+                    if not len(i.queues[kind][k]):
+                       ks.append(k)
+                    else:
+                       count += 1
+                else:
+                    count += 1
+            if len(ks):
+                for k in ks:
+                    del i.queues[kind][k]
+            if count == 0:
+               kinds.append(kind)
+        for kind in kinds:
+            del i.queues[kind]
+#        self.log.debug('cleanup %s queues removed' % len(kinds))
+        for channel in i.channels:
+            chan = i.channels[channel]
+            ns = []
+            for n in chan.nicks:
+                if channel in irc.state.channels:
+                    if not n in irc.state.channels[channel].users:
+                        ns.append(n)
+                else:
+                    ns.append(n)
+            for n in ns:
+                del chan.nicks[n]
+            bs = []
+            for b in chan.buffers:
+                 qs = []
+                 count = 0
+                 for q in chan.buffers[b]:
+                     if isinstance(chan.buffers[b][q],utils.structures.TimeoutQueue):
+                         if not len(chan.buffers[b][q]):
+                            qs.append(q)
+                         else:
+                            count += 1
+                     else:
+                        count +=1 
+                 for q in qs:
+                     del chan.buffers[b][q]
+                 if count == 0:
+                     bs.append(b)
+            for b in bs:
+                del chan.buffers[b]
+            logs = []
+            if chan.logs:
+                for log in chan.logs:
+                    if not len(chan.logs[log]):
+                        logs.append(log)
+            for log in logs:
+                del chan.logs[log]
+#            self.log.debug('%s %s nicks, %s buffers, %s logs cleanup' % (channel,len(ns),len(bs),len(logs)))
+#        self.log.debug('%r' % i)
 
     def do391 (self,irc,msg):
         i = self.getIrc(irc)
@@ -1049,8 +1111,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         mask = self.prefixToMask(irc,msg.prefix)
         i = self.getIrc(irc)
         if not i.ping or time.time() - i.ping > self.registryValue('lagInterval'):
+            i.ping = time.time()
+            self.cleanup(irc)
             if self.registryValue('lagPermit') > -1:
-                i.ping = time.time()
                 irc.queueMsg(ircmsgs.IrcMsg('MAP'))
         if i.defcon:
             if time.time() > i.defcon + self.registryValue('defcon'):
@@ -1832,42 +1895,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 msg = ircmsgs.notice(channel,message)
             irc.queueMsg(msg)
 
-    def rmNick (self,irc,nick,force=False):
-        # here we clear queues, logs, buffers whatever filled by a user
-        hasClone = False
-        mask = None
-        for channel in irc.state.channels:
-            if not nick in list(irc.state.channels[channel].users) or force:
-                c = self.getChan(irc,channel)
-                if nick in c.nicks:
-                    tmp = c.nicks[nick]
-                    clones = []
-                    mask = tmp[2]
-                    for n in c.nicks:
-                        if n != nick and c.nicks[n][2] == mask:
-                            clones.append(n)
-                            hasClone = True
-                            break
-                    if not hasClone:
-                        if mask in c.logs:
-                            del c.logs[mask]
-                        toClean = []
-                        for k in c.logs:
-                            if mask in k:
-                                toClean.append(k)
-                        for k in toClean:
-                            del c.logs[k]
-                        for key in c.buffers:
-                            if mask in c.buffers[key]:
-                                del c.buffers[key][mask]
-                    del c.nicks[nick]
-        if not hasClone and mask:
-            #self.log.debug('rmNick %s',nick)
-            i = self.getIrc(irc)
-            if mask in i.logs:
-                del i.logs[mask]
-            self.rmIrcQueueFor(irc,mask)
- 
     def dig (self,irc,channel,prefix):
         # this method is called in threads to avoid to lock the bot during calls
         i = self.getIrc(irc)
@@ -1983,7 +2010,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             return
         if msg.prefix == irc.prefix:
             for channel in channels:
-                if ircutils.isChannel(channel) and channel in irc.state.channels:
+                if ircutils.isChannel(channel):
                     if channel in i.channels:
                         del i.channels[channel]
             return
@@ -2014,14 +2041,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             #self.kill(irc,msg.nick,msg.prefix)
                             #self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'%s in %s' % (bad,channel))
                             self.logChannel(irc,"IGNORED: [%s] %s (Part's message %s) : %s" % (channel,msg.prefix,bad,reason))
-                    if bad:
-                        break
-        def rm ():
-            self.rmNick(irc,msg.nick)
-        duration = self.registryValue('brokenLife')
-        if self.registryValue('cycleLife') > duration:
-            duration = self.registryValue('cycleLife')
-        schedule.addEvent(rm,time.time()+duration+1)
 
     def doKick (self,irc,msg):
         channel = target = reason = None
@@ -2034,13 +2053,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if target == irc.nick:
             if channel in i.channels:
                 del i.channels[channel]
-        else:
-            def rm ():
-                self.rmNick(irc,target)
-            duration = self.registryValue('brokenLife')
-            if self.registryValue('cycleLife') > duration:
-                duration = self.registryValue('cycleLife')
-            schedule.addEvent(rm,time.time()+duration+1)
 
     def doQuit (self,irc,msg):
         if msg.prefix == irc.prefix:
@@ -2094,12 +2106,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 isBanned = True
                                 self.kline(irc,msg.prefix,mask,self.registryValue('brokenDuration'),'%s in %s' % ('join/quit flood',channel),self.registryValue('brokenReason') % self.registryValue('brokenDuration'))
                                 self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,'broken bottish client',mask))
-        def rm():
-            self.rmNick(irc,nick)
-        duration = self.registryValue('brokenLife')
-        if self.registryValue('cycleLife') > duration:
-            duration = self.registryValue('cycleLife')
-        schedule.addEvent(rm,time.time()+duration+1)
 
     def doNick (self,irc,msg):
         oldNick = msg.prefix.split('!')[0]

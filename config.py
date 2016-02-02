@@ -83,7 +83,7 @@ conf.registerGlobalValue(Sigyn, 'alertOnWideKline',
 conf.registerGlobalValue(Sigyn, 'lagPermit',
      registry.Integer(-1, """max lag allowed in seconds, otherwise entering netsplit mode"""))
 conf.registerGlobalValue(Sigyn, 'lagInterval',
-     registry.PositiveInteger(1, """interval between two check about lag"""))
+     registry.PositiveInteger(1, """interval between two check about lag, also used to garbage collect useless items in internal state"""))
 
 # sasl abuses detection
 
