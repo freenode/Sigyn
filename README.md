@@ -1,6 +1,7 @@
 # Sigyn #
 
 A Limnoria's plugin to handle various spam with network hammer
+You must install python-dnspython.
 
 ## Commands ##
 
@@ -15,7 +16,7 @@ A Limnoria's plugin to handle various spam with network hammer
     efnet <seconds> : ask the bot to kline users list in efnetrbl on join for <seconds>
     rehash : clear internal plugin state
     oper : tell the bot to oper
-    state [<channel>] [<nick>] : debug informations about internal state, for the whole ircd, a channel or a nick in a channel
+    state [<channel>] : debug informations about internal state, for the whole ircd or a channel
     vacuum : optimize the database
     
 ## Behaviour ##
@@ -30,6 +31,8 @@ Limits of queues may be lowered under conditions ( same abuse repeated by variou
 Bot is able to compute spam pattern and use them against spammers for a period of time.
 
 After being correctly configured, bot can handle attacks without human hands, most settings can be tweaked per channel.
+
+Default values in config.py must be modified for your needs.
 
 ## Configuration ##
 
