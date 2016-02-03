@@ -357,6 +357,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self._ircs = ircutils.IrcDict()
         self.cache = utils.structures.CacheDict(10000)
         self.getIrc(irc)
+        self.log.debug('init() called')
        
     def state (self,irc,msg,args,channel):
         """[<channel>]
@@ -630,7 +631,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if len(L) == 1:
                 h = L[0]
                 if ':' in h:
-                    if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:'):
+                    if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:') or h.startswith('2001:0:53aa:64c:'):
                         h = '%s/116' % h
                     elif h.startswith('2600:3c01'):
                         h = '%s/124' % h
@@ -702,7 +703,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.cache[prefix] = '%s@%s' % (ident,host)
             elif utils.net.bruteIsIPV6(host):
                 h = host
-                if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:'):
+                if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:') or h.startswith('2001:0:53aa:64c:'):
                     h = '%s/116' % h
                 elif h.startswith('2600:3c01'):
                     h = '%s/124' % h
@@ -852,6 +853,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             else:
                 irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (duration,mask,klineMessage,reason)))
         def forgetKline ():
+            i = self.getIrc(irc)
             if mask in i.klines:
                 del i.klines[mask]
         schedule.addEvent(forgetKline,time.time()+7)
@@ -966,6 +968,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     i.dline = host
                     irc.sendMsg(ircmsgs.IrcMsg('TESTLINE %s' % host))
                     def forget ():
+                        i = self.getIrc(irc)
                         if i.dline == host:
                             i.dline = ''
                     schedule.addEvent(forget,time.time()+7)
@@ -1006,6 +1009,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             server = '%s.freenode.net' % found
             i.servers[server] = time.time()
             def bye():
+                i = self.getIrc(irc)
                 if server in i.servers:
                     del i.servers[server]
                     if not i.netsplit:
@@ -1033,7 +1037,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             count = 0
             ks = []
             for k in i.queues[kind]:
-                #self.log.debug('kind %s : %s' % (kind,k))
                 if isinstance(i.queues[kind][k],utils.structures.TimeoutQueue):
                     if not len(i.queues[kind][k]):
                        ks.append(k)
@@ -1048,7 +1051,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                kinds.append(kind)
         for kind in kinds:
             del i.queues[kind]
-#        self.log.debug('cleanup %s queues removed' % len(kinds))
+        chs = []
         for channel in i.channels:
             chan = i.channels[channel]
             ns = []
@@ -1085,8 +1088,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         logs.append(log)
             for log in logs:
                 del chan.logs[log]
-#            self.log.debug('%s %s nicks, %s buffers, %s logs cleanup' % (channel,len(ns),len(bs),len(logs)))
-#        self.log.debug('%r' % i)
+            if len(ns) or len(bs) or len(logs):
+                chs.append('[%s : %s nicks, %s buffers, %s logs]' % (channel,len(ns),len(bs),len(logs)))
+        self.log.debug('cleanup,removed : %s queues, %s' % (len(kinds),', '.join(chs)))
 
     def do391 (self,irc,msg):
         i = self.getIrc(irc)
@@ -1303,6 +1307,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                         chs.append(channel)
                                         self.logChannel(irc,'AMSG: %s (%s) in %s' % (msg.nick,text,', '.join(chs)))
                                         def rc():
+                                            i = self.getIrc(irc)
                                             if key in i.queues:
                                                 del i.queues[key]
                                         schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
@@ -1395,6 +1400,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
                                 i.queues[target][key] = time.time() + self.registryValue('alertPeriod')
                                 def rc():
+                                    i = self.getIrc(irc)
                                     if target in i.queues:
                                         if key in i.queues[target]:
                                             del i.queues[target][key]
@@ -1420,6 +1426,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if not key in i.queues[target]:
                         self.logChannel(irc,'NOTE: %s is flooded by %s' % (target,', '.join(users)))
                         def ru():
+                            i = self.getIrc(irc)
                             if target in i.queues:
                                 if key in i.queues[target]:
                                     del i.queues[target][key]
@@ -1464,6 +1471,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not key in i.queues[target]:
                 self.logChannel(irc,'NOTE: [%s] join/part by %s' % (target,', '.join(users)))
                 def rc():
+                    i = self.getIrc(irc)
                     if target in i.queues:
                         if key in i.queues[target]:
                             del i.queues[target][key]
@@ -1483,6 +1491,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not key in i.queues[user]:
                 self.logChannel(irc,'NOTE: %s is crawling freenode (%s)' % (user,', '.join(channels)))
                 def rc():
+                    i = self.getIrc(irc)
                     if user in i.queues:
                         if key in i.queues[user]:
                             del i.queues[user][key]
@@ -1515,6 +1524,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         a.append(t)
                 self.logChannel(irc,"NOTE: %s is flooding NickServ's identify on %s" % (user,', '.join(a)))
                 def rcu():
+                    i = self.getIrc(irc)
                     if user in i.queues:
                         if key in i.queues[user]:
                             del i.queues[user][key]
@@ -1533,6 +1543,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         a.append(t)
                 self.logChannel(irc,"NOTE: %s get NickServ's identify flood by %s" % (target,', '.join(a)))
                 def rct():
+                    i = self.getIrc(irc)
                     if target in i.queues:
                         if key in i.queues[target]:
                             del i.queues[target][key]
@@ -1564,6 +1575,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     self.logChannel(irc,"NOTE: a kline similar to %s seems to hit more than %s users" % (mask,self.registryValue('alertOnWideKline')))
                     i.queues[mask][key] = time.time()
             def rct():
+                i = self.getIrc(irc)
                 if mask in i.queues:
                     if key in i.queues[mask]:
                         del i.queues[mask][key]
@@ -1640,7 +1652,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             return False
         i = self.getIrc(irc)
         if i.netsplit:
-            kinds = ['flood','lowFlood','cycle','nick','lowRepeat','lowMassRepeat','broken']
+            kinds = ['flood','lowFlood','nick','lowRepeat','lowMassRepeat','broken']
             if kind in kinds:
                 return False
         life = self.registryValue('%sLife' % kind,channel=channel)
@@ -1937,7 +1949,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if i.efnet or i.defcon:
                     log = 'BAD: [%s] %s (%s - EFNET) -> %s' % (channel,prefix,message,mask)
                     (nick,ident,host) = ircutils.splitHostmask(prefix)
-                    self.ban(irc,nick,prefix,mask,self.registryValue('klineDuration'),'efnet',self.registryValue('klineMessage'),log)
+                    self.ban(irc,nick,prefix,mask,self.registryValue('klineDuration'),'efnet',self.registryValue('klineMessage',channel=channel),log)
                     if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
                         self.log.debug('filling dronebl with %s' % ip)
                         t = world.SupyThread(target=fillDnsbl,name=format('fillDnsbl %s', ip),args=(ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
@@ -1951,6 +1963,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if key in i.pending:
             del i.pending[key]
         def rd():
+            i = self.getIrc(irc)
             if ip in i.digs:
                 del i.digs[ip]
         schedule.addEvent(rd,time.time()+self.registryValue('efnetDuration',channel=channel))
@@ -2165,6 +2178,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self._ircs = ircutils.IrcDict()
 
     def die(self):
+        self.log.debug('die() called')
+        self.cache = utils.structures.CacheDict(100)
         try:
             conf.supybot.protocols.irc.throttleTime.setValue(1.6)
         except:
