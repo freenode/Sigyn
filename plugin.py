@@ -1949,7 +1949,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if i.efnet or i.defcon:
                     log = 'BAD: [%s] %s (%s - EFNET) -> %s' % (channel,prefix,message,mask)
                     (nick,ident,host) = ircutils.splitHostmask(prefix)
-                    self.ban(irc,nick,prefix,mask,self.registryValue('klineDuration'),'efnet',self.registryValue('klineMessage',channel=channel),log)
+                    self.ban(irc,nick,prefix,mask,self.registryValue('klineDuration'),'efnet',self.registryValue('klineMessage'),log)
                     if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
                         self.log.debug('filling dronebl with %s' % ip)
                         t = world.SupyThread(target=fillDnsbl,name=format('fillDnsbl %s', ip),args=(ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
