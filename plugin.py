@@ -2102,7 +2102,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     # to work, the bot must CAP REQ extended-join
                     hosts = self.registryValue('brokenHost',channel=channel)
                     reasons = ['Read error: Connection reset by peer','Client Quit','Excess Flood','Max SendQ exceeded','Remote host closed the connection']
-                    if reason in reasons and len(hosts):
+                    if 'broken' in chan.buffers and mask in chan.buffers['broken'] and len(chan.buffers['broken'][mask]) > 1 and reason in reasons and len(hosts):
                         found = False
                         for h in hosts:
                             if len(h):
