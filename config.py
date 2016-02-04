@@ -58,7 +58,7 @@ conf.registerGlobalValue(Sigyn, 'useNotice',
      registry.Boolean(False, """use notices for announces in logChannel"""))
      
 conf.registerGlobalValue(Sigyn,'resolverTimeout',
-    registry.PositiveInteger(3, """max duration of dns request/resolve"""))
+    registry.PositiveInteger(3, """max duration of dns request/resolve in seconds"""))
      
 conf.registerGlobalValue(Sigyn, 'klineDuration',
      registry.Integer(-1, """kline duration, in minutes, with -1, bot will not kill or kline"""))
