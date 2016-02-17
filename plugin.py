@@ -1132,6 +1132,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if time.time() > i.netsplit:
                 self.logChannel(irc,"INFO: netsplit mode desactivated")
                 i.netsplit = False
+        if self.registryValue('saslChannel'):
+            if i.netsplit:
+                if self.registryValue('saslChannel') in irc.state.channels:
+                    irc.queueMsg(ircmsgs.part(self.registryValue('saslChannel')))
+            else:
+                if not self.registryValue('saslChannel') in irc.state.channels:
+                    irc.queueMsg(ircmsgs.join(self.registryValue('saslChannel')))
         if mask in i.klines:
             self.log.debug('Ignoring %s (%s) - kline in progress', msg.prefix,mask)
             return
@@ -1609,6 +1616,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if not msg.prefix in i.limits or time.time() - i.limits[msg.prefix] > self.registryValue('alertPeriod'):
                     i.limits[msg.prefix] = time.time()
                     self.logChannel(irc,'INFRA: %s is rejecting clients' % msg.prefix.split('.')[0])
+                    if not i.netsplit:
+                       self.logChannel(irc,'INFO: netsplit activated for %ss : some abuses are ignored' % self.registryValue('netsplitDuration'))
+                    i.netsplit = time.time() + self.registryValue('netsplitDuration')
             elif text.startswith('KLINE active') or text.startswith('K/DLINE active'):
                 self.handleKline(irc,text)
         else:
