@@ -914,6 +914,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     resolver.timeout = self.registryValue('resolverTimeout')
                     resolver.lifetime = self.registryValue('resolverTimeout')
                     result = resolver.query(request,'A')
+                    self.log.debug('%s : %s : %s' % (ip,request,str(result)))
                     if result:
                         for ip in result:
                             ip = str(ip)
@@ -1269,6 +1270,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         isBanned = True
                         log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
                         self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
+                        ip = mask.split('@')[1]
+                        if hilight and i.defcon and utils.net.isIPV4(ip):
+                            if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                                self.log.debug('filling dronebl with %s' % ip)
+                                t = world.SupyThread(target=fillDnsbl,name=format('fillDnsbl %s', ip),args=(ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
+                                t.setDaemon(True)
+                                t.start()
+
                 if not isBanned:
                     # todo re-implement amsg detection
                     mini = self.registryValue('amsgMinium')
