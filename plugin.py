@@ -1014,7 +1014,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if server in i.servers:
                     del i.servers[server]
                     if not i.netsplit:
-                        self.logChannel(irc,'INFO: netsplit activated for %ss due to %s/%ss of lags with %s : some abuses are ignored' % (self.registryValue('netsplitDuration'),self.regitryValue('lagPermit'),self.registryValue('lagPermit'),server))
+                        self.logChannel(irc,'INFO: netsplit activated for %ss due to %s/%ss of lags with %s : some abuses are ignored' % (self.registryValue('netsplitDuration'),self.registryValue('lagPermit'),self.registryValue('lagPermit'),server))
                     i.netsplit = time.time() + self.registryValue('netsplitDuration')
             schedule.addEvent(bye,time.time()+self.registryValue('lagPermit')+2)
             irc.queueMsg(ircmsgs.IrcMsg('TIME %s' % server))
