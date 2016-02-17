@@ -1616,9 +1616,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if not msg.prefix in i.limits or time.time() - i.limits[msg.prefix] > self.registryValue('alertPeriod'):
                     i.limits[msg.prefix] = time.time()
                     self.logChannel(irc,'INFRA: %s is rejecting clients' % msg.prefix.split('.')[0])
-                    if not i.netsplit:
-                       self.logChannel(irc,'INFO: netsplit activated for %ss : some abuses are ignored' % self.registryValue('netsplitDuration'))
-                    i.netsplit = time.time() + self.registryValue('netsplitDuration')
+                if not i.netsplit:
+                    self.logChannel(irc,'INFO: netsplit activated for %ss : some abuses are ignored' % self.registryValue('netsplitDuration'))
+                i.netsplit = time.time() + self.registryValue('netsplitDuration')
             elif text.startswith('KLINE active') or text.startswith('K/DLINE active'):
                 self.handleKline(irc,text)
         else:
