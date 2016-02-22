@@ -754,6 +754,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     i.opered = False
                     if len(self.registryValue('operatorNick')) and len(self.registryValue('operatorPassword')):
                         irc.queueMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
+        elif target in irc.state.channels and 'm' in irc.state.channels[target].modes:
+            modes = ircutils.separateModes(msg.args[1:])
+            for change in modes:
+                (mode,value) = change
+                if mode == '+v':
+                    chan = self.getChan(irc,target)
+                    if value in chan.nicks:
+                        a = chan.nicks[value]
+                        if len(a) == 5:
+                            chan.nicks[msg.nick] = [time.time(),a[1],a[2],a[3],a[4]]
+                        else:
+                            chan.nicks[msg.nick] = [time.time(),a[1],a[2],'','']
+                       
 
     def getIrc (self,irc):
         if not irc.network in self._ircs:
