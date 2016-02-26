@@ -1,6 +1,6 @@
 # Sigyn #
 
-A Limnoria's plugin to handle various spam with network hammer
+A Limnoria's plugin to handle various spam and abuses with network hammer
 You must install python-dnspython.
 
 You must tweak default settings to fits your needs.
@@ -12,10 +12,10 @@ You must tweak default settings to fits your needs.
     lspattern [--deep] <id|pattern> : search patterns inside database, use pattern's id for full information, and --deep to search on disabled pattern
     editpattern <id> <limit> <life> [<comment>] : change some values of a pattern and add a optional comment
     togglepattern <id> <boolean> : enable or disable a pattern
-    lstmp [<channel>] : list computed pattern for the given <channel>
+    lstmp [<channel>] : list computed pattern for a given <channel>
     rmtmp [<channel>] : remove computed pattern for a given <channel>
     defcon : put the bot in a agressive mode where limits are lowered and ignores are lifted
-    efnet <seconds> : ask the bot to kline users list in efnetrbl on join for <seconds>
+    efnet <seconds> : kline users listed in efnetdnsbl on join for <seconds>
     rehash : clear internal plugin state
     oper : tell the bot to oper
     state [<channel>] : debug informations about internal state, for the whole ircd or a channel
@@ -30,9 +30,9 @@ Queues are filled on abuses, when the length of a queue exceeds limits, kill and
 
 Limits of queues may be lowered under conditions ( same abuse repeated by various users in a channel, network abuse, etc )
 
-Bot is able to compute spam pattern and use them against spammers for a period of time.
+Sigyn is able to detect and extract spam pattern, and use them as lethal pattern of a period of time.
 
-After being correctly configured, bot can handle attacks without human hands, most settings can be tweaked per channel.
+After being correctly configured, Sigyn can handle attacks without human hands, most settings can be tweaked per channel.
 
 Default values in config.py must be modified to fits your needs.
 
@@ -89,8 +89,8 @@ So it can alert in logChannel when some kline affects more than x users ( with s
 
 To enable kline and kill on abuse, you must enable it and set a klineDuration > 0, before doing that, you should test and tweaks detection settings :
 
-    config supybot.plugins.Sigyn.enable True
-    config supybot.plugins.Sigyn.klineDuration 
+    config supybot.plugins.Sigyn.enable True --> otherwise Sigyn will only announce them in logChannel
+    config supybot.plugins.Sigyn.klineDuration --> in minutes
 
 ### Detections ###
 
@@ -111,6 +111,16 @@ To prevent Sigyn to monitor a particular user in a channel:
     admin capability add useraccount #mychannel,protected
     hostmask add useraccount *!*@something
     
+You can also exempt an user for a specific protection :
+
+    register useraccount password
+    admin capability add useraccount #mychannel,flood
+    admin capability add useraccount #mychannel,ctcp
+    admin capability add useraccount #mychannel,lowFlood
+    hostmask add useraccount *!*@something
+
+( see config.py for kind of protection )
+
 You can tell Sigyn to be more laxist against someone who is in the channel long time enough:
 
     config supybot.plugins.Sigyn.ignoreDuration
@@ -120,6 +130,8 @@ But as everything can happen ...
 
     config help supybot.plugins.Sigyn.bypassIgnorePermit
     config help supybot.plugins.Sigyn.bypassIgnoreLife
+
+Few are detailed here, take a look at config.py for the full list.
 
 #### Flood ####
 
@@ -139,9 +151,9 @@ Because some irc clients throttles messages, there is another set of flood detec
 
 #### Repeat ####
 
-Sigyn can create temporary lethal pattern, there is two way to create pattern, one from a single message and the other from multiples messages.
+Sigyn can create temporary lethal pattern, there is two way to create pattern, one from a single message where pattern are repeated and the other from multiples messages from various client.
 
-For those pattern, minimum length is defined here :
+For minimum computed pattern length is defined here :
 
     config supybot.plugins.Sigyn.computedPattern
     
@@ -169,6 +181,6 @@ If the user raise 2/3 of the limit, bot will try to compute pattern, with this p
     config supybot.plugins.Sigyn.massRepeatPermit
     config supybot.plugins.Sigyn.massRepeatLife
     config supybot.plugins.Sigyn.massRepeatPercent 
-    config help supybot.plugins.Sigyn.massRepeatMinimum
+    config help supybot.plugins.Sigyn.massRepeatMinimum  (1.00 will never work, because similarity must be > at massRepeatPercent )
 
 The main difference between both : single repeat detection could create small pattern ( so dangerous for legit users ) while massRepeat try to make the largest possible pattern. 
