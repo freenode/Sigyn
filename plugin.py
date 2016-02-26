@@ -1228,55 +1228,55 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 # channel detections
                 massrepeat = False
                 flag = ircdb.makeChannelCapability(channel, 'massRepeat')
-                if not ircdb.checkCapability(msg.prefix, flag):
+                if ircdb.checkCapability(msg.prefix, flag):
                     massrepeat = self.isChannelMassRepeat(irc,msg,channel,mask,text)
                     if massrepeat and self.hasAbuseOnChannel(irc,channel,'massRepeat'):
                         isIgnored = False
                 lowmassrepeat = False
                 flag = ircdb.makeChannelCapability(channel, 'lowMassRepeat')
-                if not ircdb.checkCapability(msg.prefix, flag):
+                if ircdb.checkCapability(msg.prefix, flag):
                     lowmassrepeat = self.isChannelLowMassRepeat(irc,msg,channel,mask,text)
                     if lowmassrepeat and self.hasAbuseOnChannel(irc,channel,'lowMassRepeat'):
                         isIgnored = False
                 repeat = False
                 flag = ircdb.makeChannelCapability(channel, 'repeat')
-                if not ircdb.checkCapability(msg.prefix, flag):
+                if ircdb.checkCapability(msg.prefix, flag):
                     repeat = self.isChannelRepeat(irc,msg,channel,mask,text)
                     if repeat and self.hasAbuseOnChannel(irc,channel,'repeat'):
                         isIgnored = False
                 lowrepeat = False
                 flag = ircdb.makeChannelCapability(channel, 'lowRepeat')
-                if not ircdb.checkCapability(msg.prefix, flag):
+                if ircdb.checkCapability(msg.prefix, flag):
                     lowrepeat = self.isChannelLowRepeat(irc,msg,channel,mask,text)
                     if lowrepeat and self.hasAbuseOnChannel(irc,channel,'lowRepeat'):
                         isIgnored = False
                 hilight = False
                 flag = ircdb.makeChannelCapability(channel, 'hilight')
-                if not ircdb.checkCapability(msg.prefix, flag):
+                if ircdb.checkCapability(msg.prefix, flag):
                     hilight = self.isChannelHilight(irc,msg,channel,mask,text)
                     if hilight and self.hasAbuseOnChannel(irc,channel,'hilight'):
                         isIgnored = False
                 lowhilight = False
                 flag = ircdb.makeChannelCapability(channel, 'lowHilight')
-                if not ircdb.checkCapability(msg.prefix, flag):
+                if ircdb.checkCapability(msg.prefix, flag):
                     lowhilight = self.isChannelLowHilight(irc,msg,channel,mask,text)
                     if lowhilight and self.hasAbuseOnChannel(irc,channel,'lowHilight'):
                         isIgnored = False
                 flood = False
                 flag = ircdb.makeChannelCapability(channel, 'flood')
-                if not ircdb.checkCapability(msg.prefix, flag):
+                if ircdb.checkCapability(msg.prefix, flag):
                     flood = self.isChannelFlood(irc,msg,channel,mask,text)
                     if flood and self.hasAbuseOnChannel(irc,channel,'flood'):
                         isIgnored = False
                 lowflood = False
                 flag = ircdb.makeChannelCapability(channel, 'lowFlood')
-                if not ircdb.checkCapability(msg.prefix, flag):
+                if ircdb.checkCapability(msg.prefix, flag):
                     lowflood = self.isChannelLowFlood(irc,msg,channel,mask,text)
                     if lowflood and self.hasAbuseOnChannel(irc,channel,'lowFlood'):
                         isIgnored = False
                 ctcp = False
                 flag = ircdb.makeChannelCapability(channel, 'ctcp')
-                if not ircdb.checkCapability(msg.prefix, flag):
+                if ircdb.checkCapability(msg.prefix, flag):
                     if not ircmsgs.isAction(msg) and (ircmsgs.isCtcp(msg) or isNotice):
                         ctcp = self.isChannelCtcp(irc,msg,channel,mask,text)
                     if ctcp and self.hasAbuseOnChannel(irc,channel,'ctcp'):
@@ -2101,7 +2101,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         continue
                     bad = False
                     flag = ircdb.makeChannelCapability(channel, 'cycle')
-                    if not ircdb.checkCapability(msg.prefix, flag):
+                    if ircdb.checkCapability(msg.prefix, flag):
                         bad = self.isBadOnChannel(irc,channel,'cycle',mask)
                     if bad:
                         isBanned = True
@@ -2154,7 +2154,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         continue
                     bad = False
                     flag = ircdb.makeChannelCapability(channel, 'broken')
-                    if not ircdb.checkCapability(msg.prefix, flag):
+                    if ircdb.checkCapability(msg.prefix, flag):
                         bad = self.isBadOnChannel(irc,channel,'broken',mask)
                     if isBanned:
                         continue
@@ -2207,7 +2207,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         if not isBanned:
                             reason = False
                             flag = ircdb.makeChannelCapability(channel, 'nick')
-                            if not ircdb.checkCapability(msg.prefix, flag):
+                            if ircdb.checkCapability(msg.prefix, flag):
                                 reason = self.isBadOnChannel(irc,channel,'nick',mask)
                             hasBeenIgnored = False
                             ignore = self.registryValue('ignoreDuration',channel=channel)
