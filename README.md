@@ -114,9 +114,9 @@ To prevent Sigyn to monitor a particular user in a channel:
 You can also exempt an user for a specific protection :
 
     register useraccount password
-    admin capability remove useraccount #mychannel,flood
-    admin capability remove useraccount #mychannel,ctcp
-    admin capability remove useraccount #mychannel,lowFlood
+    admin capability add useraccount #mychannel,-flood
+    admin capability add useraccount #mychannel,-ctcp
+    admin capability add useraccount #mychannel,-lowFlood
     hostmask add useraccount *!*@something
 
 ( see config.py for kind of protection )
