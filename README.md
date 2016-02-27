@@ -111,7 +111,7 @@ To prevent Sigyn to monitor a particular user in a channel:
     admin capability add useraccount #mychannel,protected
     hostmask add useraccount *!*@something
     
-You can also exempt an user for a specific protection :
+You can also exempt an user for some protections :
 
     register useraccount password
     admin capability add useraccount #mychannel,-flood
@@ -119,7 +119,7 @@ You can also exempt an user for a specific protection :
     admin capability add useraccount #mychannel,-lowFlood
     hostmask add useraccount *!*@something
 
-( see config.py for kind of protection )
+List of anti-capabilities you can use: flood, lowFlood, broken, ctcp, repeat, lowRepeat, massRepeat, lowMassRepeat, nick, hilight, cycle
 
 You can tell Sigyn to be more laxist against someone who is in the channel long time enough:
 
