@@ -1196,6 +1196,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             return
         isBanned = False
         for channel in targets.split(','):
+            if channel.startswith('@'):
+                channel = channel.replace('@','')
+            if channel.startswith('+'):
+                channel = channel.replace('+','')
             if irc.isChannel(channel) and channel in irc.state.channels:
                 if self.registryValue('reportChannel') == channel:
                     self.handleReportMessage(irc,msg)
@@ -1607,28 +1611,58 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         queue = self.getIrcQueueFor(irc,user,'snoteId',life)
         queue.enqueue(target)
         i = self.getIrc(irc)
+        targets = []
+        key = 'snoteIdAlerted'
         if len(queue) > limit:
             targets = list(queue)
             queue.reset()
+            if not key in i.queues[user]:
+                def rcu():
+                    i = self.getIrc(irc)
+                    if user in i.queues:
+                        if key in i.queues[user]:
+                            del i.queues[user][key]
+                i.queues[user][key] = time.time()
+                schedule.addEvent(rcu,time.time()+self.registryValue('alertPeriod'))
+        if key in i.queues[user]:
+            if len(queue):
+                targets = list(queue)
+                queue.reset()
             a = []
             for t in targets:
                 if not t in a:
                     a.append(t)
-            mask = prefixToMask(user)
+            mask = self.prefixToMask(irc,user)
+            (nick,ident,host) = ircutils.splitHostmask(user)
+            self.kill(irc,nick,user)
             self.kline(irc,user,mask,self.registryValue('klineDuration'),'ns id flood (%s)' % ', '.join(a))
             self.logChannel(irc,"BAD: %s (ns id flood %s) -> %s" % (user,', '.join(a),mask))
         # user receive nickserv's id
         queue = self.getIrcQueueFor(irc,target,'snoteId',life)
         queue.enqueue(user)
+        targets = []
         if len(queue) > limit:
-            users = list(queue)
+            targets = list(queue)
             queue.reset()
+            def rct():
+                i = self.getIrc(irc)
+                if target in i.queues:
+                    if key in i.queues[target]:
+                        del i.queues[target][key]
+            i.queues[target][key] = time.time()
+            schedule.addEvent(rct,time.time()+self.registryValue('alertPeriod'))
+        if key in i.queues[target]:
+            if len(queue):
+                targets = list(queue)
+                queue.reset() 
             a = []
-            for t in users:
+            for t in targets:
                 if not t in a:
                     a.append(t)
             for u in a:
-                mask = prefixToMask(u)
+                mask = self.prefixToMask(irc,u)
+                (nick,ident,host) = ircutils.splitHostmask(u)
+                self.kill(irc,nick,u)
                 self.kline(irc,u,mask,self.registryValue('klineDuration'),'ns id flood on %s' % target)
                 self.logChannel(irc,"BAD: %s (ns id flood on %s) -> %s" % (u,target,mask))
 
@@ -1843,9 +1877,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             result = self.isBadOnChannel(irc,channel,kind,mask)
         enough = False
         if flag:
-            l = self.registryValue('%sPermit' % kind,channel=channel)
-            if len(chan.buffers[kind][mask])/(l * 1.0) > 0.66:
-                enough = True
+            if kind in chan.buffers and key in chan.buffers[kind]:
+                if len(chan.buffers[kind][key])/(limit * 1.0) > 0.66:
+                    enough = True
         if enough:
             life = self.registryValue('computedPatternLife',channel=channel)
             if not chan.patterns:
