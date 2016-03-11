@@ -85,6 +85,9 @@ conf.registerGlobalValue(Sigyn, 'lagPermit',
 conf.registerGlobalValue(Sigyn, 'lagInterval',
      registry.PositiveInteger(1, """interval between two check about lag, also used to garbage collect useless items in internal state"""))
 
+conf.registerGlobalValue(Sigyn, 'ghostPermit',
+     registry.Integer(-1, """max number of ghost connections allowed"""))
+
 # sasl abuses detection
 
 conf.registerGlobalValue(Sigyn, 'saslPermit',

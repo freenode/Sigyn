@@ -1137,7 +1137,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         r = []
         for k in i.stats:
-            if i.stats[k] > 4:
+            if i.stats[k] > self.registryValue('ghostPermit'):
                 r.append(k.replace('[unknown@','').replace(']',''))
         for ip in r:
             irc.sendMsg(ircmsgs.IrcMsg('DLINE %s %s on * :%s' % (1440,ip,'')))
@@ -1170,7 +1170,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self.cleanup(irc)
             if self.registryValue('lagPermit') > -1:
                 i.stats = {}
-                irc.queueMsg(ircmsgs.IrcMsg('STATS L'))
+                if self.registryValue('ghostPermit') > -1:
+                    irc.queueMsg(ircmsgs.IrcMsg('STATS L'))
                 irc.queueMsg(ircmsgs.IrcMsg('MAP'))
         if i.defcon:
             if time.time() > i.defcon + self.registryValue('defcon'):
