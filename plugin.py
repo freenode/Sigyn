@@ -1602,7 +1602,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         user = text.split('Last attempt received from ')[1].split(' on')[0].strip()
         if not ircutils.isUserHostmask(user):
             return
-        if user.split('!')[0] == target:
+        if user.split('!')[0].lower() == target.lower():
             return
         limit = self.registryValue('idPermit')
         life = self.registryValue('idLife')
@@ -1624,7 +1624,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         if key in i.queues[user]:
                             del i.queues[user][key]
                 i.queues[user][key] = time.time()
-                schedule.addEvent(rcu,time.time()+self.registryValue('alertPeriod'))
+                schedule.addEvent(rcu,time.time()+self.registryValue('abuseLife'))
         if key in i.queues[user]:
             if len(queue):
                 targets = list(queue)
@@ -1651,15 +1651,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if key in i.queues[target]:
                         del i.queues[target][key]
             i.queues[target][key] = time.time()
-            schedule.addEvent(rct,time.time()+self.registryValue('alertPeriod'))
+            schedule.addEvent(rct,time.time()+self.registryValue('abuseLife'))
         if key in i.queues[target]:
             if len(queue):
                 targets = list(queue)
                 queue.reset() 
-            a = []
+            a = {}
             for t in targets:
                 if not t in a:
-                    a.append(t)
+                    a[t] = t
             for u in a:
                 mask = self.prefixToMask(irc,u)
                 (nick,ident,host) = ircutils.splitHostmask(u)
