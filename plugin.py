@@ -754,7 +754,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         if not i.opered:
             i.opered = True
-            irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bf' % irc.nick))
+            irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bfC' % irc.nick))
             try:
                 conf.supybot.protocols.irc.throttleTime.setValue(0.2)
             except:
@@ -1681,8 +1681,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             user = user.strip()
             if not ircutils.isUserHostmask(user):
                 return
-            mask = self.prefixToMask(irc,user)
-            mask = '*@%s' % mask.split('@')[1]
+            (nick,ident,host) = ircutils.splitHostmask(user)
+            #mask = self.prefixToMask(irc,user)
+            #mask = '*@%s' % mask.split('@')[1]
+            mask = '*@%s' % host
             queue = self.getIrcQueueFor(irc,mask,'klineNote',7)
             queue.enqueue(user)
             key = 'wideKlineAlert'
@@ -1698,6 +1700,27 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         del i.queues[mask][key]
                 self.rmIrcQueueFor(irc,mask)
             schedule.addEvent(rct,time.time()+8)
+
+    def handleClientCon (self,irc,text):
+        i = self.getIrc(irc)
+        a = text.split(' ')
+        if len(a) > 4 and utils.net.isIPV4(a[4]):
+            key = 'dig %s' % a[4]
+            prefix = '%s!%s@%s' % (a[1],a[2],a[3])
+            if not '/' in a[3]:
+                if a[2].startswith('~'):
+                    a[2] = '*'
+                self.cache[prefix] = '%s@%s' % (a[2],a[4])
+                self.log.debug('%s :: %s' % (prefix,self.cache[prefix]))
+            if not key in i.pending and not i.netsplit:
+                i.pending[key] = True
+                channel = self.registryValue('logChannel')
+                channels = []
+                channels.append(channel)
+                t = world.SupyThread(target=self.dig,name=format('Dig %s for %s',prefix, ','.join(channels)),args=(irc,channel,prefix))
+                t.setDaemon(True)
+                t.start()
+            
 
     def doNotice (self,irc,msg):
         (targets, text) = msg.args
@@ -1722,6 +1745,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 i.netsplit = time.time() + self.registryValue('netsplitDuration')
             elif text.startswith('KLINE active') or text.startswith('K/DLINE active'):
                 self.handleKline(irc,text)
+            elif text.startswith('CLICONN'):
+                self.handleClientCon(irc,text)
         else:
             self.handleMsg(irc,msg,True)
 
@@ -1760,7 +1785,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             # chan.buffers[kind][key].reset()
             # queue not reseted, that way during life, it returns True
             if not chan.called:
-                self.logChannel(irc,"INFO: ignores lifted and triggers thresholds lowered in %s due to %s abuses for %ss at least" % (channel,key,self.registryValue('abuseDuration'))) 
+                self.logChannel(irc,"INFO: ignores lifted and triggers thresholds lowered in %s due to %s abuses for %ss at least" % (channel,key,self.registryValue('abuseDuration',channel=channel))) 
             chan.called = time.time()
             return True
         return False
