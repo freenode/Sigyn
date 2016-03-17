@@ -176,7 +176,6 @@ class Ircd (object):
         self.ping = None
         self.servers = {}
         self.resolving = {}
-        self.ignores = {}
         self.stats = {}
 
     def __repr__(self):
@@ -361,21 +360,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.getIrc(irc)
         self.log.debug('init() called')
        
-    def rehashignore (self,irc,msg,args):
-        """rehash local file blacklist"""
-        try:
-            i = self.getIrc(irc)
-            index = 0
-            with open('/home/sigyn/Sigyn/plugins/Sigyn/ignores.log', 'r') as content_file:
-                file = content_file.read()
-                for line in file.split('\n'):
-                    i.ignores[line.split(':')[0].strip()] = True
-                    index = index + 1
-            irc.reply('%s ip ignored' % index)
-        except:
-            irc.reply('error during rehash')
-    rehashignore = wrap(rehashignore,['owner'])
-
     def state (self,irc,msg,args,channel):
         """[<channel>]
 
@@ -1197,6 +1181,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             return
         isBanned = False
         for channel in targets.split(','):
+            # handle CPRIVMSG
             if channel.startswith('@'):
                 channel = channel.replace('@','')
             if channel.startswith('+'):
@@ -1435,10 +1420,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     irc.queueMsg(ircmsgs.privmsg(self.registryValue('saslChannel'),'IGNORED %s due to iline (%s)' % (i.dline,msg.args[2])))
         i.dline = ''
 
-    def do401 (self,irc,msg):
-        # already removed nick from kill
-        t = True
-
     def do726 (self,irc,msg):
         # other ircd
         i = self.getIrc(irc)
@@ -1531,13 +1512,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     del i.queues[target][key]
                         i.queues[target][key] = time.time()
                         schedule.addEvent(ru,time.time()+self.registryValue('alertPeriod'))
-                    #else:
-                        #reason = 'flooded %s (snote)' % target
-                        #for spammer in users:
-                            #mask = self.prefixToMask(irc,spammer)
-                            #log = 'BAD: %s flooded %s (snote) -> %s' (spammer,target,mask)
-                            #(sn,si,sh) = ircutils.splitHostmask(spammer)
-                            #self.ban(irc,sn,spammer,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log)
 
     def handleJoinSnote (self,irc,text):
         limit = self.registryValue('joinRatePermit')
@@ -1682,6 +1656,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not ircutils.isUserHostmask(user):
                 return
             (nick,ident,host) = ircutils.splitHostmask(user)
+            # avoid resolve here 
             #mask = self.prefixToMask(irc,user)
             #mask = '*@%s' % mask.split('@')[1]
             mask = '*@%s' % host
@@ -1711,12 +1686,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if a[2].startswith('~'):
                     a[2] = '*'
                 self.cache[prefix] = '%s@%s' % (a[2],a[4])
-                self.log.debug('%s :: %s' % (prefix,self.cache[prefix]))
             if not key in i.pending and not i.netsplit:
                 i.pending[key] = True
                 channel = self.registryValue('logChannel')
-                channels = []
-                channels.append(channel)
+                channels = [channel]
                 t = world.SupyThread(target=self.dig,name=format('Dig %s for %s',prefix, ','.join(channels)),args=(irc,channel,prefix))
                 t.setDaemon(True)
                 t.start()
@@ -2101,14 +2074,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         t.setDaemon(True)
                         t.start()
                 else:
-                    if channel == '#freenode' and channel in irc.state.channels and 'm' in irc.state.channels[channel].modes:
-                        if 'eir' in irc.state.channels[channel].ops:
+                    if '#freenode' in irc.state.channels and 'm' in irc.state.channels['#freenode'].modes and prefix.split('!')[0] in irc.state.channels['#freenode'].users:
+                        if 'eir' in irc.state.channels['#freenode'].ops:
                             match = '*!*@%s' % prefix.split('@')[1]
-                            irc.queueMsg(ircmsgs.privmsg('eir','add %s 4w %s' % (match,message)))
-                        if irc.nick in irc.state.channels[channel].ops:
-                            def vd():
-                                irc.queueMsg(ircmsgs.IrcMsg('MODE %s +v-v %s %s' % (channel,prefix.split('!')[0],prefix.split('!')[0])))
-                            schedule.addEvent(vd,time.time()+60)
+                            irc.queueMsg(ircmsgs.privmsg('eir','add %s %s %s' % (match,self.registryValue('eirDuration'),message)))
                     self.logChannel(irc,"EFNET: [%s] %s (%s)" % (channel,prefix,message))
         else:
             i.digs[ip] = False
@@ -2156,19 +2125,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     continue
                 ip = mask.split('@')[1]
                 if utils.net.isIPV4(ip):
-                    if channel == '#freenode' and 'm' in irc.state.channels[channel].modes:
-                        if 'eir' in irc.state.channels[channel].ops and ip in i.ignores:
-                            match = '*!*@%s' % msg.prefix.split('@')[1]
-                            irc.queueMsg(ircmsgs.privmsg('eir','add %s 4w %s' % (match,'listed in ignores.log')))
-                            if irc.nick in irc.state.channels[channel].ops:
-                                def vd():
-                                    irc.queueMsg(ircmsgs.IrcMsg('MODE %s +v-v %s %s' % (channel,msg.prefix.split('!')[0],msg.prefix.split('!')[0])))
-                                schedule.addEvent(vd,time.time()+60)
                     if ip in i.digs:
-                        if i.digs[ip] and (i.efnet or i.defcon):
-                            log = 'BAD: [%s] %s (%s - EFNET) -> %s' % (channel,prefix,i.digs[ip],mask)
-                            self.ban(irc,msg.nick,prefix,mask,self.registryValue('klineDuration'),'efnet',self.registryValue('klineMessage'),log)
-                            break
+                        if i.digs[ip]:
+                            if (i.efnet or i.defcon):
+                                log = 'BAD: [%s] %s (%s - EFNET) -> %s' % (channel,prefix,i.digs[ip],mask)
+                                self.ban(irc,msg.nick,prefix,mask,self.registryValue('klineDuration'),'efnet',self.registryValue('klineMessage'),log)
+                            else:
+                                if channel == '#freenode' and msg.nick in irc.state.channels[channel].users and 'm' in irc.state.channels[channel].modes and 'eir' in irc.state.channels[channel].ops:
+                                    match = '*!*@%s' % msg.prefix.split('@')[1]
+                                    irc.queueMsg(ircmsgs.privmsg('eir','add %s %s %s' % (match,self.registryValue('eirDuration'),i.digs[ip])))
                     else:
                         key = 'dig %s' % ip
                         if not key in i.pending:

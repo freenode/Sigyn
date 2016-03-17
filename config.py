@@ -88,6 +88,9 @@ conf.registerGlobalValue(Sigyn, 'lagInterval',
 conf.registerGlobalValue(Sigyn, 'ghostPermit',
      registry.Integer(-1, """max number of ghost connections allowed"""))
 
+conf.registerChannelValue(Sigyn, 'eirDuration',
+     registry.String("", """eir dnv duration"""))
+
 # sasl abuses detection
 
 conf.registerGlobalValue(Sigyn, 'saslPermit',
