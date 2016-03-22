@@ -740,7 +740,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             i.opered = True
             irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bfC' % irc.nick))
             try:
-                conf.supybot.protocols.irc.throttleTime.setValue(0.2)
+                conf.supybot.protocols.irc.throttleTime.setValue(0.01)
             except:
                 t = True
 
@@ -1640,6 +1640,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.kill(irc,nick,u)
                 self.kline(irc,u,mask,self.registryValue('klineDuration'),'ns id flood on %s' % target)
                 self.logChannel(irc,"BAD: %s (ns id flood on %s) -> %s" % (u,target,mask))
+                if i.defcon and utils.net.isIPV4(mask.split('@')[1]):
+                    if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                        self.log.debug('filling dronebl with %s' % mask.split('@')[1])
+                        t = world.SupyThread(target=fillDnsbl,name=format('fillDnsbl %s', mask.split('@')[1]),args=(mask.split('@')[1],self.registryValue('droneblHost'),self.registryValue('droneblKey')))
+                        t.setDaemon(True)
+                        t.start()
 
     def handleKline(self,irc,text):
         if self.registryValue('alertOnWideKline') > -1:
@@ -1686,14 +1692,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if a[2].startswith('~'):
                     a[2] = '*'
                 self.cache[prefix] = '%s@%s' % (a[2],a[4])
-            if not key in i.pending and not i.netsplit:
-                i.pending[key] = True
-                channel = self.registryValue('logChannel')
-                channels = [channel]
-                t = world.SupyThread(target=self.dig,name=format('Dig %s for %s',prefix, ','.join(channels)),args=(irc,channel,prefix))
-                t.setDaemon(True)
-                t.start()
-            
+                if not key in i.pending and not i.netsplit:
+                    i.pending[key] = True
+                    channel = self.registryValue('logChannel')
+                    channels = [channel]
+                    t = world.SupyThread(target=self.dig,name=format('Dig %s for %s',prefix, ','.join(channels)),args=(irc,channel,prefix))
+                    t.setDaemon(True)
+                    t.start()
 
     def doNotice (self,irc,msg):
         (targets, text) = msg.args
@@ -2067,7 +2072,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if i.efnet or i.defcon:
                     log = 'BAD: [%s] %s (%s - EFNET) -> %s' % (channel,prefix,message,mask)
                     (nick,ident,host) = ircutils.splitHostmask(prefix)
-                    self.ban(irc,nick,prefix,mask,self.registryValue('klineDuration'),'efnet',self.registryValue('klineMessage'),log)
+                    if self.registryValue('logChannel') == channel:
+                        self.kline(irc,prefix,mask,self.registryValue('klineDuration'),'efnet')
+                    else:
+                        self.ban(irc,nick,prefix,mask,self.registryValue('klineDuration'),'efnet',self.registryValue('klineMessage'),log)
                     if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
                         self.log.debug('filling dronebl with %s' % ip)
                         t = world.SupyThread(target=fillDnsbl,name=format('fillDnsbl %s', ip),args=(ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
