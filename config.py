@@ -161,6 +161,11 @@ conf.registerGlobalValue(Sigyn, 'joinRatePermit',
 conf.registerGlobalValue(Sigyn, 'joinRateLife',
     registry.PositiveInteger(1,"""life of notices in seconds"""))
 
+conf.registerGlobalValue(Sigyn, 'crawlPermit',
+    registry.Integer(-1,"""number of snotes about join floodfor a given channel with differents users"""))
+conf.registerGlobalValue(Sigyn, 'crawlLife',
+    registry.PositiveInteger(1,"""life of notices in seconds"""))
+
 # NickServ ID failures
 
 conf.registerGlobalValue(Sigyn, 'idPermit',
