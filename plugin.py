@@ -1496,8 +1496,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 break
                         if not stored:
                             queue.enqueue(user)
+                        users = list(queue)
                         if len(queue) > limit:
-                            users = list(queue)
                             queue.reset()
                             if not key in i.queues[target]:
                                 self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
@@ -1509,6 +1509,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                             del i.queues[target][key]
                                 i.queues[target][key] = time.time()
                                 schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
+                            else:
+                                def rkc():
+                                    i = self.getIrc(irc)
+                                    if target in i.queues:
+                                        if 'kline' in i.queues[target]:
+                                            del i.queues[target]['kline']
+                                i.queues[target]['kline'] = True
+                                schedule.addEvent(rkc,time.time()+self.registryValue('alertPeriod'))
+                        if 'kline' in i.queues[target]:
+                                for u in users:
+                                    umask = self.prefixToMask(irc,u)
+                                    self.kline(irc,u,umask,self.registryValue('klineDuration'),'snote flood on %s' % target)
+                                    self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (u,umask,target))
         else:
             # nick being flood by someone
             limit = self.registryValue('userFloodPermit')
@@ -1522,8 +1535,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         break
                 if not stored:
                     queue.enqueue(user)
+                users = list(queue)
                 if len(queue) > limit:
-                    users = list(queue)
                     queue.reset()
                     key = 'snoteFloodAlerted'
                     if not key in i.queues[target]:
@@ -1535,6 +1548,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     del i.queues[target][key]
                         i.queues[target][key] = time.time()
                         schedule.addEvent(ru,time.time()+self.registryValue('alertPeriod'))
+                    else:
+                        def rku():
+                            i = self.getIrc(irc)
+                            if target in i.queues:
+                                if 'kline' in i.queues[target]:
+                                    del i.queues[target]['kline']
+                        i.queues[target]['kline'] = True
+                        schedule.addEvent(rku,time.time()+self.registryValue('alertPeriod'))
+                if 'kline' in i.queues[target]:
+                        for u in users:
+                            umask = self.prefixToMask(irc,u)
+                            self.kline(irc,u,umask,self.registryValue('klineDuration'),'snote flood on %s' % target)
+                            self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (u,umask,target))
 
     def handleJoinSnote (self,irc,text):
         limit = self.registryValue('joinRatePermit')
@@ -1585,7 +1611,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.log.debug('%s : %s : %s : %s : %s' % (user,mask,len(queue),life,limit)) 
         if len(queue) > limit and limit > 0:
             channels = list(queue)
-            #queue.reset()
+            if not i.defcon:
+                queue.reset()
             if not key in i.queues[mask]:
                 self.logChannel(irc,'NOTE: %s is crawling freenode (%s)' % (user,', '.join(channels)))
                 def rc():
