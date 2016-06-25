@@ -56,6 +56,8 @@ import supybot.callbacks as callbacks
 import supybot.schedule as schedule
 import supybot.registry as registry
 
+from MailChecker import MailChecker
+
 try:
     from supybot.i18n import PluginInternationalization
     _ = PluginInternationalization('Sigyn')
@@ -381,6 +383,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         except:
             irc.reply('error during rehash')
     dnv = wrap(dnv,['owner'])
+
+    def check (self,irc,msg,args,text):
+        """check if email is valid"""
+        if not MailChecker.is_valid(text):
+            irc.reply('%s is badmail' % text)
+        else:
+            irc.reply('%s is valid' % text)
+    check = wrap(check,['owner','text'])
        
     def state (self,irc,msg,args,channel):
         """[<channel>]
@@ -1521,7 +1531,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 for u in users:
                                     umask = self.prefixToMask(irc,u)
                                     self.kline(irc,u,umask,self.registryValue('klineDuration'),'snote flood on %s' % target)
-                                    self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (u,umask,target))
+                                    self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (u,target,umask))
         else:
             # nick being flood by someone
             limit = self.registryValue('userFloodPermit')
@@ -1560,7 +1570,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         for u in users:
                             umask = self.prefixToMask(irc,u)
                             self.kline(irc,u,umask,self.registryValue('klineDuration'),'snote flood on %s' % target)
-                            self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (u,umask,target))
+                            self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (u,target,umask))
 
     def handleJoinSnote (self,irc,text):
         limit = self.registryValue('joinRatePermit')
