@@ -507,7 +507,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def lspattern (self,irc,msg,args,optlist,pattern):
         """[--deep] <id|pattern>
 
-        returns list patterns which matchs pattern or info about pattern #id, use --deep to search on desactivated patterns"""
+        returns list patterns which matchs pattern or info about pattern #id, use --deep to search on deactivated patterns"""
         i = self.getIrc(irc)
         deep = False
         for (option, arg) in optlist:
@@ -1201,7 +1201,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if i.netsplit:
             if time.time() > i.netsplit:
                 i.netsplit = False
-                self.logChannel(irc,"INFO: netsplit mode desactivated")
+                self.logChannel(irc,"INFO: netsplit mode deactivated")
         if self.registryValue('saslChannel'):
             if i.netsplit:
                 if self.registryValue('saslChannel') in irc.state.channels:
