@@ -771,7 +771,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if not i.opered:
             i.opered = True
             #MODE %s +s +bfC
-            irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bf' % irc.nick))
+            irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bnf' % irc.nick))
             try:
                 conf.supybot.protocols.irc.throttleTime.setValue(0.01)
             except:
@@ -1621,8 +1621,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.log.debug('%s : %s : %s : %s : %s' % (user,mask,len(queue),life,limit)) 
         if len(queue) > limit and limit > 0:
             channels = list(queue)
-            if not i.defcon:
-                queue.reset()
+#            if not i.defcon:
+            queue.reset()
             if not key in i.queues[mask]:
                 self.logChannel(irc,'NOTE: %s is crawling freenode (%s)' % (user,', '.join(channels)))
                 def rc():
@@ -1678,6 +1678,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 #self.kill(irc,nick,user)
                 self.kline(irc,user,mask,self.registryValue('klineDuration'),'ns id flood (%s)' % ', '.join(a))
                 self.logChannel(irc,"BAD: %s (ns id flood %s) -> %s" % (user,', '.join(a),mask))
+                if i.defcon and utils.net.isIPV4(mask.split('@')[1]):
+                    if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                        self.log.debug('filling dronebl with %s' % mask.split('@')[1])
+                        t = world.SupyThread(target=fillDnsbl,name=format('fillDnsbl %s', mask.split('@')[1]),args=(mask.split('@')[1],self.registryValue('droneblHost'),self.registryValue('droneblKey')))
+                        t.setDaemon(True)
+                        t.start()
         # user receive nickserv's id
         queue = self.getIrcQueueFor(irc,target,'snoteId',life)
         queue.enqueue(user)
@@ -1769,6 +1775,31 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     t.setDaemon(True)
                     t.start()
 
+    def handleNickSnote (self,irc,text):
+        text = text.replace('Nick change: From ','')
+        text = text.split(' to ')[1]
+        nick = text.split(' ')[0]
+        host = text.split(' ')[1]
+        host = host.replace('[','',1)
+        host = host[:-1]
+        limit = 5
+        life = 180
+        if limit < 0:
+            return
+        mask = self.prefixToMask(irc,'%s!%s' % (nick,host))
+        #self.kline(irc,u,umask,self.registryValue('klineDuration'),'snote flood on %s' % target)
+        #self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (u,target,umask))
+        i = self.getIrc(irc)
+        if not i.defcon:
+            return
+        queue = self.getIrcQueueFor(irc,mask,'snoteNick',life)
+        queue.enqueue(nick)
+        if len(queue) > limit:
+            nicks = list(queue)
+            queue.reset()
+            self.kline(irc,'%s!%s' % (nick,host),mask,self.registryValue('klineDuration'),'nick changes abuses %s/%ss' % (limit,life))
+            self.logChannel(irc,"BAD: %s abuses nick change (%s) -> %s" % (mask,','.join(nicks),mask))
+            
     def doNotice (self,irc,msg):
         (targets, text) = msg.args
         if len(targets) and targets[0] == '*':
@@ -1778,6 +1809,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 text = text.replace('*** Notice -- ','')
             if text.startswith('Possible Flooder '):
                 self.handleFloodSnote(irc,text)
+            elif text.startswith('Nick change: From'):
+                self.handleNickSnote(irc,text)
             elif text.startswith('User') and text.endswith('is a possible spambot'):
                 self.handleJoinSnote(irc,text)
             elif 'failed login attempts to' in text and not '<sasl>' in text:
