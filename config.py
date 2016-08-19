@@ -91,6 +91,12 @@ conf.registerGlobalValue(Sigyn, 'ghostPermit',
 conf.registerChannelValue(Sigyn, 'eirDuration',
      registry.String("", """eir dnv duration"""))
 
+conf.registerGlobalValue(Sigyn, 'announcePermit',
+    registry.Integer(-1,"""number of announce permit in logChannel,if triggered the bot will stay quiet for alertPeriod, -1 to disable"""))
+conf.registerGlobalValue(Sigyn, 'announceLife',
+    registry.PositiveInteger(1,"""life of announce in memory (seconds)"""))
+
+
 # sasl abuses detection
 
 conf.registerGlobalValue(Sigyn, 'saslPermit',
@@ -111,8 +117,8 @@ conf.registerChannelValue(Sigyn, 'torPorts',
     registry.CommaSeparatedListOfStrings([''], """ports to check"""))
 conf.registerChannelValue(Sigyn, 'torTarget',
     registry.String("","""ip of the targeted ircd, for tor checks"""))
-# dronebl submit
 
+# dronebl submit
 conf.registerGlobalValue(Sigyn, 'droneblKey',
      registry.String("", """dronebl key for rpc calls""", private=True))
 conf.registerGlobalValue(Sigyn, 'droneblHost',
@@ -123,6 +129,8 @@ conf.registerGlobalValue(Sigyn, 'reportChannel',
     registry.String("","""channel of the instance"""))
 conf.registerGlobalValue(Sigyn, 'reportNick',
     registry.String("","""bot nicks starts with"""))
+conf.registerGlobalValue(Sigyn, 'reportNicks',                                                                                                                                                                                      
+    registry.CommaSeparatedListOfStrings([''],"""bots nicks"""))
 conf.registerGlobalValue(Sigyn, 'reportPermit',
     registry.Integer(-1,"""number of proxy detected, -1 to disable"""))
 conf.registerGlobalValue(Sigyn, 'reportLife',
@@ -131,7 +139,6 @@ conf.registerGlobalValue(Sigyn, 'defcon',
     registry.PositiveInteger(1,"""duration of defcon mode in seconds, where bot is more agressive, with lowered abuse triggers and no ignores"""))
 
 # amsg
-
 conf.registerGlobalValue(Sigyn, 'amsgMinium',
     registry.PositiveInteger(1,"""length of text necessary to start amsg check"""))
 conf.registerGlobalValue(Sigyn, 'amsgPermit',
@@ -142,6 +149,13 @@ conf.registerGlobalValue(Sigyn, 'amsgPercent',
     registry.Probability(1.00,"""percent of similarity between two messages"""))
 
 # service notices 
+
+# user nick changes snote
+conf.registerGlobalValue(Sigyn, 'nickChangePermit',
+    registry.Integer(-1,"""number of server notices (nick changes) allowed for a given period"""))
+conf.registerGlobalValue(Sigyn, 'nickChangeLife',
+    registry.PositiveInteger(1,"""life of notices in seconds"""))
+
 
 # channel flood snote
 conf.registerGlobalValue(Sigyn, 'channelFloodPermit',

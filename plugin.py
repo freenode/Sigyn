@@ -144,7 +144,7 @@ addConverter('getPatternAndMatcher', getPatternAndMatcher)
 
 class Ircd (object):
     
-    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','dline','efnet','digs','netsplit','tors','ping','servers','resolving','stats','dnv','patterns')
+    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','dline','efnet','digs','netsplit','tors','ping','servers','resolving','stats','dnv','patterns','throttled')
 
     def __init__(self,irc):
         self.irc = irc
@@ -183,6 +183,7 @@ class Ircd (object):
         self.resolving = {}
         self.stats = {}
         self.dnv = {}
+        self.throttled = False
 
     def __repr__(self):
         return '%s(patterns=%r, queues=%r, channels=%r, pending=%r, logs=%r, digs=%r, limits=%r, whowas=%r, klines=%r)' % (self.__class__.__name__,
@@ -771,9 +772,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if not i.opered:
             i.opered = True
             #MODE %s +s +bfC
+            irc.queueMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
             irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bnf' % irc.nick))
             try:
-                conf.supybot.protocols.irc.throttleTime.setValue(0.01)
+                conf.supybot.protocols.irc.throttleTime.setValue(0.0)
             except:
                 t = True
 
@@ -932,7 +934,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def handleReportMessage (self,irc,msg):
         (targets, text) = msg.args
-        if msg.nick.startswith(self.registryValue('reportNick')):
+        #if msg.nick.startswith(self.registryValue('reportNick')):
+        nicks = self.registryValue('reportNicks')
+        if msg.nick in nicks:
             i = self.getIrc(irc)
             if text.startswith('BAD:') and not '(tor' in text:
                 permit = self.registryValue('reportPermit')
@@ -1530,8 +1534,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         if 'kline' in i.queues[target]:
                                 for u in users:
                                     umask = self.prefixToMask(irc,u)
-                                    self.kline(irc,u,umask,self.registryValue('klineDuration'),'snote flood on %s' % target)
-                                    self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (u,target,umask))
+                                    #self.kill(irc,u.split('!')[0],u)
+                                    #self.kline(irc,u,umask,self.registryValue('klineDuration'),'snote flood on %s' % target)
+                                    self.logChannel(irc,"NOTE: %s (snote flood on %s) -> %s" % (u,target,umask))
         else:
             # nick being flood by someone
             limit = self.registryValue('userFloodPermit')
@@ -1782,8 +1787,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         host = text.split(' ')[1]
         host = host.replace('[','',1)
         host = host[:-1]
-        limit = 5
-        life = 180
+        limit = self.registryValue('nickChangePermit')
+        life = self.registryValue('nickChangeLife')
         if limit < 0:
             return
         mask = self.prefixToMask(irc,'%s!%s' % (nick,host))
@@ -2130,7 +2135,27 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             msg = ircmsgs.privmsg(channel,message)
             if self.registryValue('useNotice'):
                 msg = ircmsgs.notice(channel,message)
-            irc.sendMsg(msg)
+            life = self.registryValue('announceLife')
+            limit = self.registryValue('announcePermit')
+            if limit > 0:    
+                q = self.getIrcQueueFor(irc,'status','announce',life)
+                q.enqueue(message)
+                if len(q) > limit:
+                    if not i.throttled:
+                        i.throttled = True
+                        irc.queueMsg(ircmsgs.privmsg(channel,'NOTE: messages throttled to avoid spam for %ss' % life))
+                    self.log.info('throttled %s' % message)
+                else:
+                    i.throttled = False
+                    if i.opered:
+                        irc.sendMsg(msg)
+                    else:
+                        irc.queueMsg(msg)
+            else:
+                if i.opered:
+                    irc.sendMsg(msg)
+                else:
+                    irc.queueMsg(msg)
 
     def dig (self,irc,channel,prefix):
         # this method is called in threads to avoid to lock the bot during calls
@@ -2138,12 +2163,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         mask = self.prefixToMask(irc,prefix)
         ip = mask.split('@')[1]
         h = '.'.join(ip.split('.')[::-1])
-        h = h + '.rbl.efnetrbl.org'
+        h = h + '.rbl.efnetrbl.org.'
         m = None
         try:
             resolver = dns.resolver.Resolver()
             resolver.timeout = self.registryValue('resolverTimeout')
             resolver.lifetime = self.registryValue('resolverTimeout')
+            resolver.nameservers = ['208.67.222.222','208.67.220.220']
             m = resolver.query(h,'A')
         except:
            m = None
@@ -2190,7 +2216,42 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             irc.queueMsg(ircmsgs.privmsg('eir','add %s %s %s' % (match,self.registryValue('eirDuration'),message)))
                     self.logChannel(irc,"EFNET: [%s] %s (%s)" % (channel,prefix,message))
         else:
-            i.digs[ip] = False
+            if i.defcon:
+                h = '.'.join(ip.split('.')[::-1])
+                h = h + '.xbl.spamhaus.org.'
+                m = None         
+                message = None                                                                                                                                                                                                                    
+                try:                                                                                                                                                                                                                                 
+                    resolver = dns.resolver.Resolver()                                                                                                                                                                                               
+                    resolver.timeout = self.registryValue('resolverTimeout')                                                                                                                                                                         
+                    resolver.lifetime = self.registryValue('resolverTimeout')
+                    resolver.nameservers = ['208.67.222.222','208.67.220.220']                                                                                                                                                                        
+                    m = resolver.query(h,'A')                                                                                                                                                                                                        
+                except:                                                                                                                                                                                                                              
+                    m = None
+                if m:
+                    for entry in m:
+                        entry = str(entry)                                                                                                                                                                                                           
+                        if entry == '127.0.0.2':
+                            message = 'SBL'                                                                                                                                                                                                   
+                            break
+                        elif entry == '127.0.0.3':                                                                                                                                                                           
+                            message = 'SBLCSS'                                                                                                                                                                                                        
+                            break               
+                        elif entry == '127.0.0.4' or entry == '127.0.0.5' or entry == '127.0.0.6' or entry == '127.0.0.7':                                                                                                                                                                                                     
+                            message = 'CBL'
+                            break          
+                        elif entry == '127.0.0.10' or entry == '127.0.0.11':
+                            message = 'PBL'
+                            break
+                i.digs[ip] = message
+                if message:
+                    log = 'BAD: [%s] %s (%s - SPAMHAUS) -> %s' % (channel,prefix,message,mask)
+                    (nick,ident,host) = ircutils.splitHostmask(prefix)
+                    self.ban(irc,nick,prefix,mask,self.registryValue('klineDuration'),'%s - Spamhaus' % message,self.registryValue('klineMessage'),log)
+                self.log.debug('%s (%s) spamhaus : %s' % (prefix,ip,message))
+            else:
+                i.digs[ip] = False
         key = 'dig %s' % ip
         if key in i.pending:
             del i.pending[key]
