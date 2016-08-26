@@ -56,8 +56,6 @@ import supybot.callbacks as callbacks
 import supybot.schedule as schedule
 import supybot.registry as registry
 
-from MailChecker import MailChecker
-
 try:
     from supybot.i18n import PluginInternationalization
     _ = PluginInternationalization('Sigyn')
@@ -385,14 +383,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             irc.reply('error during rehash')
     dnv = wrap(dnv,['owner'])
 
-    def check (self,irc,msg,args,text):
-        """check if email is valid"""
-        if not MailChecker.is_valid(text):
-            irc.reply('%s is badmail' % text)
-        else:
-            irc.reply('%s is valid' % text)
-    check = wrap(check,['owner','text'])
-       
     def state (self,irc,msg,args,channel):
         """[<channel>]
 
@@ -414,7 +404,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if channel == chan:
                 ch = self.getChan(irc,chan)
                 if not self.registryValue('ignoreChannel',channel=chan):
-                    irc.queueMsg(ircmsgs.privmsg(msg.nick,'On %s (%s users) :' % (chan,len(ch.nicks))))
+                    called = ""
+                    if ch.called:
+                        called = 'currently in defcon'
+                    irc.queueMsg(ircmsgs.privmsg(msg.nick,'On %s (%s users) %s:' % (chan,len(ch.nicks),called)))
                     protections = ['flood','lowFlood','repeat','lowRepeat','massRepeat','lowMassRepeat','hilight','nick','ctcp']
                     for protection in protections:
                         if self.registryValue('%sPermit' % protection,channel=chan) > -1:
@@ -443,19 +436,29 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         irc.replySuccess()
     state = wrap(state,['owner',optional('channel')])
 
-    def defcon (self,irc,msg,args):
+    def defcon (self,irc,msg,args,channel):
         """takes no arguments
 
         force bot to enter in defcon mode: lowered triggers limits, no ignore, kline of hosts in efnet's dnsbl, bot is less tolerant against abuse"""
         i = self.getIrc(irc)
-        if i.defcon:
-            i.defcon = time.time()
-            irc.reply('Already in defcon mode, reset, %ss more' % self.registryValue('defcon'))
+        if channel:
+            if channel in i.channels and self.registryValue('abuseDuration',channel=channel) > 0:
+                chan = self.getChan(irc,channel)
+                if chan.called:
+                    self.logChannel(irc,'INFO: [%s] rescheduled ignores lifted, limits lowered (by %s) for %ss' % (channel,msg.nick,self.registryValue('abuseDuration',channel=channel)))
+                    chan.called = time.time()
+                else:    
+                    self.logChannel(irc,'INFO: [%s] ignores lifted, limits lowered (by %s) for %ss' % (channel,msg.nick,self.registryValue('abuseDuration',channel=channel)))
+                    chan.called = time.time()
         else:
-            i.defcon = time.time()
-            self.logChannel(irc,"INFO: ignores lifted and abuses end to klines for %ss by %s" % (self.registryValue('defcon'),msg.nick))
-            irc.replySuccess()
-    defcon = wrap(defcon,['owner'])
+            if i.defcon:
+                i.defcon = time.time()
+                irc.reply('Already in defcon mode, reset, %ss more' % self.registryValue('defcon'))
+            else:
+                i.defcon = time.time()
+                self.logChannel(irc,"INFO: ignores lifted and abuses end to klines for %ss by %s" % (self.registryValue('defcon'),msg.nick))
+        irc.replySuccess()
+    defcon = wrap(defcon,['owner',optional('channel')])
 
     def vacuum (self,irc,msg,args):
         """takes no arguments
@@ -1236,8 +1239,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if chan.called:
                     if time.time() - chan.called > self.registryValue('abuseDuration',channel=channel):
                         chan.called = False
+                        self.logChannel(irc,'INFO: [%s] returns to regular state' % channel)
                 elif irc.nick in raw or '!ops' in raw:
-                    chan.called = time.time()
+                    if not chan.called:
+                        self.logChannel(irc,'INFO: [%s] ignores lifted, limits lowered (by %s) for %ss' % (channel,msg.nick,self.registryValue('abuseDuration',channel=channel)))
+                        chan.called = time.time()
                 if isBanned:
                     continue
                 if msg.nick in list(irc.state.channels[channel].ops):
@@ -1368,7 +1374,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         reason = ctcp
                 if reason:
                     if chan.called:
-                        chan.called = time.time()
+                        isIgnored = False
                     if isIgnored:
                         bypassIgnore = self.isBadOnChannel(irc,channel,'bypassIgnore',mask)
                         if bypassIgnore:
@@ -1531,12 +1537,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                             del i.queues[target]['kline']
                                 i.queues[target]['kline'] = True
                                 schedule.addEvent(rkc,time.time()+self.registryValue('alertPeriod'))
-                        if 'kline' in i.queues[target]:
-                                for u in users:
-                                    umask = self.prefixToMask(irc,u)
+#                        if 'kline' in i.queues[target]:
+#                                for u in users:
+#                                    umask = self.prefixToMask(irc,u)
                                     #self.kill(irc,u.split('!')[0],u)
                                     #self.kline(irc,u,umask,self.registryValue('klineDuration'),'snote flood on %s' % target)
-                                    self.logChannel(irc,"NOTE: %s (snote flood on %s) -> %s" % (u,target,umask))
+#                                    self.logChannel(irc,"NOTE: %s (snote flood on %s) -> %s" % (u,target,umask))
         else:
             # nick being flood by someone
             limit = self.registryValue('userFloodPermit')
@@ -1743,6 +1749,18 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             # avoid resolve here 
             #mask = self.prefixToMask(irc,user)
             #mask = '*@%s' % mask.split('@')[1]
+            nicks = self.getIrcQueueFor(irc,'nickKlineNote','nickKlineNote',50)
+            nicks.enqueue(ident)
+            nickPattern = ''
+            nickCurrent = ''
+            for n in nicks:
+                if n != ident:
+                    nickCurrent = largestString(n,ident)
+                if len(nickCurrent) > len(nickPattern):
+                    nickPattern = nickCurrent
+            if len(nicks) > 10 and len(nickPattern) > 4:
+                nicks.reset()
+                self.log.debug('HANDLEKLINE %s : %s' % (user,nickPattern))
             mask = '*@%s' % host
             queue = self.getIrcQueueFor(irc,mask,'klineNote',7)
             queue.enqueue(user)
@@ -1870,7 +1888,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             # chan.buffers[kind][key].reset()
             # queue not reseted, that way during life, it returns True
             if not chan.called:
-                self.logChannel(irc,"INFO: ignores lifted and triggers thresholds lowered in %s due to %s abuses for %ss at least" % (channel,key,self.registryValue('abuseDuration',channel=channel))) 
+                self.logChannel(irc,"INFO: [%s] ignores lifted, limits lowered due to %s abuses for %ss" % (channel,key,self.registryValue('abuseDuration',channel=channel))) 
             chan.called = time.time()
             return True
         return False
@@ -1890,12 +1908,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             return '%s %s/%ss in %s' % (kind,limit,life,channel)
         if not kind in chan.buffers:
             chan.buffers[kind] = {}
+        newUser = False
         if not key in chan.buffers[kind]:
+            newUser = True
             chan.buffers[kind][key] = utils.structures.TimeoutQueue(life)
+            chan.buffers[kind]['%s-creation' % key] = time.time()
         elif chan.buffers[kind][key].timeout != life:
             chan.buffers[kind][key].setTimeout(life)
+        ignore = self.registryValue('ignoreDuration',channel=channel)
+        if ignore > 0:
+           if time.time() - chan.buffers[kind]['%s-creation' % key] < ignore:
+               newUser = True
         chan.buffers[kind][key].enqueue(key)
-        if i.defcon or self.hasAbuseOnChannel(irc,channel,kind) or chan.called:
+        if newUser or i.defcon or self.hasAbuseOnChannel(irc,channel,kind) or chan.called:
             limit = limit - 1
             if limit < 0:
                 limit = 0
@@ -2216,7 +2241,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             irc.queueMsg(ircmsgs.privmsg('eir','add %s %s %s' % (match,self.registryValue('eirDuration'),message)))
                     self.logChannel(irc,"EFNET: [%s] %s (%s)" % (channel,prefix,message))
         else:
-            if i.defcon:
+            chan = self.getChan(irc,channel)
+            if chan.called or self.isAbuseOnChannel(irc,channel,'efnet',channel):
                 h = '.'.join(ip.split('.')[::-1])
                 h = h + '.xbl.spamhaus.org.'
                 m = None         
