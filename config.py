@@ -273,7 +273,10 @@ conf.registerChannelValue(Sigyn, 'massRepeatMinimum',
 conf.registerChannelValue(Sigyn, 'computedPattern',
     registry.Integer(1,"""minimun number of chars needed to keep it as a spam pattern, -1 to disable"""))
 conf.registerChannelValue(Sigyn, 'computedPatternLife',
-    registry.Integer(1,"""minimun number of chars needed to keep it as a spam pattern, -1 to disable"""))
+    registry.Integer(1,"""life in seconds of computed pattern, -1 to disable"""))
+conf.registerChannelValue(Sigyn, 'shareComputedPatternID',
+    registry.Integer(-1,"""share the temporary pattern created to all channels with the same number, -1 to disable"""))
+
 
 conf.registerChannelValue(Sigyn, 'lowMassRepeatPermit',
     registry.Integer(-1,"""number of mass repeat permit duration massRepeatLife, -1 to disable"""))

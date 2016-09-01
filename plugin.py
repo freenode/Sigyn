@@ -511,7 +511,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def lspattern (self,irc,msg,args,optlist,pattern):
         """[--deep] <id|pattern>
 
-        returns list patterns which matchs pattern or info about pattern #id, use --deep to search on deactivated patterns"""
+        returns patterns which matchs pattern or info about pattern #id, use --deep to search on deactivated patterns"""
         i = self.getIrc(irc)
         deep = False
         for (option, arg) in optlist:
@@ -520,7 +520,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 break
         results = i.ls(self.getDb(irc.network),pattern,deep)
         if len(results):
-            irc.replies(results,None,None,False)
+            if deep:
+                for r in results:
+                    irc.queueMsg(ircmsgs.privmsg(msg.nick,r))
+            else:
+                irc.replies(results,None,None,False)
         else:
             irc.reply('no pattern found')
     lspattern = wrap(lspattern,['owner',getopts({'deep': ''}),'text'])
@@ -2057,8 +2061,26 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             break
                     if not found:
                         candidate = candidate.strip()
-                        chan.patterns.enqueue(candidate)
-                        self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,candidate,self.registryValue('computedPatternLife',channel=channel),kind))
+                        shareID = self.registryValue('shareComputedPatternID',channel=channel)
+                        if shareID != -1:
+                            nb = 0
+                            i = self.getIrc(irc)
+                            for chan in i.channels:                                
+                                ch = i.channels[chan]
+                                life = self.registryValue('computedPatternLife',channel=chan)
+                                if shareID != self.registryValue('shareComputedPatternID',channel=chan):
+                                    continue                                                                                                                                                                 
+                                if not ch.patterns:                                                                                                                                                                                                            
+                                    ch.patterns = utils.structures.TimeoutQueue(life)                                                                                                                                                                          
+                                elif ch.patterns.timeout != life:                                                                                                                                                                                              
+                                    ch.patterns.setTimeout(life)                                                                                                                                                                                               
+                                if len(candidate) > self.registryValue('computedPattern',channel=chan):
+                                    ch.patterns.enqueue(candidate)
+                                    nb = nb + 1                                
+                            self.logChannel(irc,'PATTERN: [%s] added "%s" in %s channels' % (channel,candidate,nb,kind))
+                        else:
+                            chan.patterns.enqueue(candidate)
+                            self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,candidate,self.registryValue('computedPatternLife',channel=channel),kind))
                         # maybe, instead of awaiting for others repeated messages before kline, we could return
                         # and remove others users which matchs ..
                         # return 'repeat pattern creation'
@@ -2125,8 +2147,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             break
                     if not found:
                         pattern = pattern.strip()
-                        chan.patterns.enqueue(pattern)
-                        self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,pattern,self.registryValue('computedPatternLife',channel=channel),kind))
                         users = {}
                         users[mask] = True
                         for u in chan.logs:
@@ -2148,6 +2168,27 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                         self.logChannel(irc,"BAD: [%s] %s (pattern creation - %s)" % (channel,u,kind))
                                         break
                             users[u] = True
+                        shareID = self.registryValue('shareComputedPatternID',channel=channel)
+                        if shareID != -1:
+                            nb = 0
+                            i = self.getIrc(irc)
+                            for chan in i.channels:
+                                ch = i.channels[chan]
+                                if shareID != self.registryValue('shareComputedPatternID',channel=chan):
+                                    continue                                              
+                                life = self.registryValue('computedPatternLife',channel=chan)
+                                if not ch.patterns:
+                                    ch.patterns = utils.structures.TimeoutQueue(life)
+                                elif ch.patterns.timeout != life:
+                                    ch.patterns.setTimeout(life)
+                                if len(pattern) > self.registryValue('computedPattern',channel=chan):                                                                                                                                
+                                    ch.patterns.enqueue(pattern)
+                                    nb = nb + 1                                                                                                                                                                                              
+                            self.logChannel(irc,'PATTERN: [%s] added "%s" in %s channels (%s)' % (channel,pattern,nb,kind))                            
+                        else:
+                            chan.patterns.enqueue(pattern)
+                            self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,pattern,self.registryValue('computedPatternLife',channel=channel),kind))
+                            
         logs.enqueue(text)
         if result and pattern:
             return result
