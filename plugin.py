@@ -2077,7 +2077,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 if len(candidate) > self.registryValue('computedPattern',channel=chan):
                                     ch.patterns.enqueue(candidate)
                                     nb = nb + 1                                
-                            self.logChannel(irc,'PATTERN: [%s] added "%s" in %s channels' % (channel,candidate,nb,kind))
+                            self.logChannel(irc,'PATTERN: [%s] added "%s" in %s channels (%s)' % (channel,candidate,nb,kind))
                         else:
                             chan.patterns.enqueue(candidate)
                             self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,candidate,self.registryValue('computedPatternLife',channel=channel),kind))
