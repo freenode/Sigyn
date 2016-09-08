@@ -956,6 +956,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         if not i.defcon:
                             self.logChannel(irc,"BOT: Wave in progress (%s/%ss), ignores lifted, triggers thresholds lowered for %ss at least" % (self.registryValue('reportPermit'),self.registryValue('reportLife'),self.registryValue('defcon'))) 
                         i.defcon = time.time()
+                else:
+                    if i.netsplit and text.startswith('Join rate in '):
+                        i.netsplit = time.time() + self.registryValue('netsplitDuration')                            
 
     def tor (self,irc,ip):
         i = self.getIrc(irc)
@@ -1180,7 +1183,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 i.stats[msg.args[1]] = i.stats[msg.args[1]] + 1
             else:
                 i.stats[msg.args[1]] = 0
-
+            
     def handleMsg (self,irc,msg,isNotice):
         if not ircutils.isUserHostmask(msg.prefix):
             return
@@ -2069,21 +2072,18 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 ch = i.channels[chan]
                                 life = self.registryValue('computedPatternLife',channel=chan)
                                 if shareID != self.registryValue('shareComputedPatternID',channel=chan):
+                                    self.log.debug('%s (%s) :: %s (%s)' % (channel,shareID,chan,self.registryValue('shareComputedPatternID',channel=chan)))
                                     continue                                                                                                                                                                 
-                                if not ch.patterns:                                                                                                                                                                                                            
+                                if not ch.patterns:                                                                                                                                                           
                                     ch.patterns = utils.structures.TimeoutQueue(life)                                                                                                                                                                          
                                 elif ch.patterns.timeout != life:                                                                                                                                                                                              
                                     ch.patterns.setTimeout(life)                                                                                                                                                                                               
-                                if len(candidate) > self.registryValue('computedPattern',channel=chan):
-                                    ch.patterns.enqueue(candidate)
-                                    nb = nb + 1                                
+                                ch.patterns.enqueue(candidate)
+                                nb = nb + 1                                
                             self.logChannel(irc,'PATTERN: [%s] added "%s" in %s channels (%s)' % (channel,candidate,nb,kind))
                         else:
                             chan.patterns.enqueue(candidate)
                             self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,candidate,self.registryValue('computedPatternLife',channel=channel),kind))
-                        # maybe, instead of awaiting for others repeated messages before kline, we could return
-                        # and remove others users which matchs ..
-                        # return 'repeat pattern creation'
         logs.enqueue(text)
         return result
 
@@ -2154,7 +2154,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             if not u in users and ircutils.isUserHostmask(user):
                                 for m in chan.logs[u]:
                                     if pattern in m:
-                                        # todo, recover nick ..
                                         prefix = u
                                         if isCloaked(user):
                                             nick = None
@@ -2175,20 +2174,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             for chan in i.channels:
                                 ch = i.channels[chan]
                                 if shareID != self.registryValue('shareComputedPatternID',channel=chan):
+                                    self.log.debug('%s (%s) :: %s (%s)' % (channel,shareID,chan,self.registryValue('shareComputedPatternID',channel=chan)))
                                     continue                                              
                                 life = self.registryValue('computedPatternLife',channel=chan)
                                 if not ch.patterns:
                                     ch.patterns = utils.structures.TimeoutQueue(life)
                                 elif ch.patterns.timeout != life:
                                     ch.patterns.setTimeout(life)
-                                if len(pattern) > self.registryValue('computedPattern',channel=chan):                                                                                                                                
-                                    ch.patterns.enqueue(pattern)
-                                    nb = nb + 1                                                                                                                                                                                              
+                                ch.patterns.enqueue(pattern)
+                                nb = nb + 1                                                                                                                                                                                              
                             self.logChannel(irc,'PATTERN: [%s] added "%s" in %s channels (%s)' % (channel,pattern,nb,kind))                            
                         else:
                             chan.patterns.enqueue(pattern)
-                            self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,pattern,self.registryValue('computedPatternLife',channel=channel),kind))
-                            
+                            self.logChannel(irc,'PATTERN: [%s] added "%s" for %ss (%s)' % (channel,pattern,self.registryValue('computedPatternLife',channel=channel),kind))                            
         logs.enqueue(text)
         if result and pattern:
             return result
@@ -2449,7 +2447,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             reason = msg.args[0].lstrip().rstrip()
         i = self.getIrc(irc)
         if reason == '*.net *.split':
-            # TODO use i.netsplit for server's lags too, with another duration
             if not i.netsplit:
                 self.logChannel(irc,'INFO: netsplit activated for %ss : some abuses are ignored' % self.registryValue('netsplitDuration'))
             i.netsplit = time.time() + self.registryValue('netsplitDuration')
