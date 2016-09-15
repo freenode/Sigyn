@@ -194,6 +194,7 @@ class Ircd (object):
         if len(items):
             for item in items:
                 (uid,pattern,regexp,limit,life) = item
+                regexp = int(regexp)
                 if regexp == 1:
                     regexp = True
                 else:
@@ -252,7 +253,11 @@ class Ircd (object):
                 if i:
                     if removed_by:
                         end = ' - disabled on %s by %s - ' % (floatToGMT(removed_at),removed_by.split('!')[0])
-                    results.append('#%s "%s" by %s on %s (%s calls) %s/%ss%s(%s)' % (uid,pattern,operator.split('!')[0],floatToGMT(at),triggered,limit,life,end,comment))
+                    regexp = int(regexp)
+                    reg = 'not case sensitive'
+                    if regexp == 1:
+                        reg = 'regexp pattern'
+                    results.append('#%s "%s" by %s on %s (%s calls) %s/%ss%s %s - %s' % (uid,pattern,operator.split('!')[0],floatToGMT(at),triggered,limit,life,end,comment,reg))
                 else:
                     if removed_by:
                         end = ' (disabled)'
@@ -286,11 +291,12 @@ class Ircd (object):
         updated = False
         if len(items):
             (id,pattern,regexp,limit,life,removed_at,removed_by) = items[0]
+            regexp = int(regexp)
             if active and removed_at:
                 c.execute("""UPDATE patterns SET removed_at=NULL, removed_by=NULL WHERE id=? LIMIT 1""",(uid,))
                 self.patterns[uid] = Pattern(uid,pattern,regexp == 1,limit,life)
                 updated = True
-            elif not removed_at:
+            elif not removed_at and not active:
                 c.execute("""UPDATE patterns SET removed_at=?, removed_by=? WHERE id=? LIMIT 1""",(float(time.time()),prefix,uid))
                 if uid in self.patterns:
                     del self.patterns[uid]
@@ -508,6 +514,21 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             irc.replySuccess()
     netsplit = wrap(netsplit,['owner','positiveInt'])
 
+    def checkpattern (self,irc,msg,args,text):
+        """ <text>
+            test the text against permanent patterns """
+        i = self.getIrc(irc)
+        patterns = []
+        for k in i.patterns:
+            pattern = i.patterns[k]
+            if pattern.match(text):
+                patterns.append('#%s' % pattern.uid)
+        if len(patterns):
+            irc.queueMsg(ircmsgs.privmsg(msg.nick,'%s matchs: %s' % (len(patterns),', '.join(patterns))))
+        else:
+            irc.reply('nothing matchs')  
+    checkpattern = wrap(checkpattern,['owner','text'])
+
     def lspattern (self,irc,msg,args,optlist,pattern):
         """[--deep] <id|pattern>
 
@@ -629,7 +650,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         if channel in i.channels:
             chan = self.getChan(irc,channel)
-            if chan.patterns:
+            shareID = self.registryValue('shareComputedPatternID',channel=channel)
+            if shareID != -1:
+                n = 0
+                for channel in i.channels:
+                    id = self.registryValue('shareComputedPatternID',channel=channel)
+                    if id == shareID:
+                       if i.channels[channel].patterns:
+                           i.channels[channel].patterns.reset()
+                           n = n + 1 
+                self.logChannel(irc,'PATTERN: removed tmp patterns in %s channels by %s' % (n,msg.nick))
+            elif chan.patterns:
                 l = len(chan.patterns)
                 chan.patterns.reset()
                 if l:
@@ -782,7 +813,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             irc.queueMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
             irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bnf' % irc.nick))
             try:
-                conf.supybot.protocols.irc.throttleTime.setValue(0.0)
+                conf.supybot.protocols.irc.throttleTime.setValue(0.3)
             except:
                 t = True
 
@@ -954,11 +985,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if len(queue) > permit:
                         queue.reset()
                         if not i.defcon:
+                            #irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))                            
                             self.logChannel(irc,"BOT: Wave in progress (%s/%ss), ignores lifted, triggers thresholds lowered for %ss at least" % (self.registryValue('reportPermit'),self.registryValue('reportLife'),self.registryValue('defcon'))) 
+                            #def mzo():
+                            #    irc.queueMsg(ircmsgs.IrcMsg('MODE #freenode +mzo %s' % irc.nick))
+                            #schedule.addEvent(mzo,time.time()+3)
                         i.defcon = time.time()
-                else:
-                    if i.netsplit and text.startswith('Join rate in '):
-                        i.netsplit = time.time() + self.registryValue('netsplitDuration')                            
+            else:
+                if i.netsplit and text.startswith('Join rate in '):
+                    i.netsplit = time.time() + self.registryValue('netsplitDuration')                            
 
     def tor (self,irc,ip):
         i = self.getIrc(irc)
@@ -1208,6 +1243,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if time.time() > i.defcon + self.registryValue('defcon'):
                 i.defcon = False
                 self.logChannel(irc,"INFO: triggers restored to normal behaviour")
+                #irc.queueMsg(ircmsgs.IrcMsg("MODE #freenode -mzo %s" % irc.nick))
         if i.efnet:
             if time.time() > i.efnet:
                 i.efnet = False
@@ -2450,6 +2486,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not i.netsplit:
                 self.logChannel(irc,'INFO: netsplit activated for %ss : some abuses are ignored' % self.registryValue('netsplitDuration'))
             i.netsplit = time.time() + self.registryValue('netsplitDuration')
+        if i.netsplit:
+            return
         mask = self.prefixToMask(irc,msg.prefix)
         isBanned = False
         (nick,ident,host) = ircutils.splitHostmask(msg.prefix)
@@ -2502,6 +2540,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         newPrefix = '%s!%s' % (newNick,msg.prefix.split('!')[1])
         mask = self.prefixToMask(irc,newPrefix)
         i = self.getIrc(irc)
+        if i.netsplit:
+            return
         isBanned = False
         for channel in irc.state.channels:
             if ircutils.isChannel(channel):
@@ -2513,6 +2553,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 chan = self.getChan(irc,channel)
                 if oldNick in chan.nicks:
                     chan.nicks[newNick] = chan.nicks[oldNick]
+                    # todo check digit/hexa nicks too
                     if not newNick.startswith('Guest'):
                         if not isBanned:
                             reason = False
