@@ -447,14 +447,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
         force bot to enter in defcon mode: lowered triggers limits, no ignore, kline of hosts in efnet's dnsbl, bot is less tolerant against abuse"""
         i = self.getIrc(irc)
-        if channel:
+        if channel and channel != self.registryValue('logChannel'):
             if channel in i.channels and self.registryValue('abuseDuration',channel=channel) > 0:
                 chan = self.getChan(irc,channel)
                 if chan.called:
-                    self.logChannel(irc,'INFO: [%s] rescheduled ignores lifted, limits lowered (by %s) for %ss' % (channel,msg.nick,self.registryValue('abuseDuration',channel=channel)))
+                    #self.logChannel(irc,'INFO: [%s] rescheduled ignores lifted, limits lowered (by %s) for %ss' % (channel,msg.nick,self.registryValue('abuseDuration',channel=channel)))
                     chan.called = time.time()
                 else:    
-                    self.logChannel(irc,'INFO: [%s] ignores lifted, limits lowered (by %s) for %ss' % (channel,msg.nick,self.registryValue('abuseDuration',channel=channel)))
+                    #self.logChannel(irc,'INFO: [%s] ignores lifted, limits lowered (by %s) for %ss' % (channel,msg.nick,self.registryValue('abuseDuration',channel=channel)))
                     chan.called = time.time()
         else:
             if i.defcon:
@@ -631,14 +631,31 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         if channel in i.channels:
             chan = self.getChan(irc,channel)
-            life = self.registryValue('computedPatternLife',channel=channel)
-            if not chan.patterns:
-                chan.patterns = utils.structures.TimeoutQueue(life)
-            elif chan.patterns.timeout != life:
-                chan.patterns.setTimeout(life)
-            chan.patterns.enqueue(text)
-            self.logChannel(irc,'PATTERN: [%s] added tmp "%s" for %ss by %s' % (channel,text,life,msg.nick))
-            irc.replySuccess()
+            shareID = self.registryValue('shareComputedPatternID',channel=channel)
+            if shareID == -1:
+                life = self.registryValue('computedPatternLife',channel=channel)
+                if not chan.patterns:
+                    chan.patterns = utils.structures.TimeoutQueue(life)
+                elif chan.patterns.timeout != life:
+                    chan.patterns.setTimeout(life)
+                chan.patterns.enqueue(text)
+                self.logChannel(irc,'PATTERN: [%s] added tmp "%s" for %ss by %s' % (channel,text,life,msg.nick))
+                irc.replySuccess()
+            else:
+                n = 0
+                for channel in i.channels:
+                    chan = self.getChan(irc,channel)
+                    ID = self.registryValue('shareComputedPatternID',channel=channel)
+                    if id == shareID:
+                        life = self.registryValue('computedPatternLife',channel=channel)
+                        if not chan.patterns:
+                            chan.patterns = utils.structures.TimeoutQueue(life)
+                        elif chan.patterns.timeout != life:
+                            chan.patterns.setTimeout(life)
+                        chan.patterns.enqueue(text)
+                        n = n + 1
+                self.logChannel(irc,'PATTERN: added tmp "%s" for %ss by %s in %s channels' % (text,life,msg.nick,n))
+                irc.replySuccess()
         else:
             irc.reply('unknown channel')
     addtmp = wrap(addtmp,['op','text'])
@@ -1112,7 +1129,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if not i.netsplit:
                         self.logChannel(irc,'INFO: netsplit activated for %ss due to %s/%ss of lags with %s : some abuses are ignored' % (self.registryValue('netsplitDuration'),self.registryValue('lagPermit'),self.registryValue('lagPermit'),server))
                     i.netsplit = time.time() + self.registryValue('netsplitDuration')
-            schedule.addEvent(bye,time.time()+self.registryValue('lagPermit')+2)
+            schedule.addEvent(bye,time.time()+self.registryValue('lagPermit'))
             irc.queueMsg(ircmsgs.IrcMsg('TIME %s' % server))
         try:
             if server:
@@ -1133,14 +1150,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         for kind in i.queues:
             count = 0
             ks = []
-            for k in i.queues[kind]:
-                if isinstance(i.queues[kind][k],utils.structures.TimeoutQueue):
-                    if not len(i.queues[kind][k]):
-                       ks.append(k)
+            try:
+                for k in i.queues[kind]:
+                    if isinstance(i.queues[kind][k],utils.structures.TimeoutQueue):
+                        if not len(i.queues[kind][k]):
+                            ks.append(k)
+                        else:
+                           count += 1
                     else:
-                       count += 1
-                else:
-                    count += 1
+                        count += 1
+            except:
+                self.log.error('Exception with %s' % kind)
             if len(ks):
                 for k in ks:
                     del i.queues[kind][k]
@@ -1263,6 +1283,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self.log.debug('Ignoring %s (%s) - kline in progress', msg.prefix,mask)
             return
         isBanned = False
+        #if i.defcon and '#freenode' in i.channels:
+        #    if i.channels['#freenode'].called:
+        #       if not irc.nick in irc.state.channels['#freenode'].ops:
+                    
+        #elif not i.defcon and '#freenode' in irc.state.channels and 'z' in irc.state.channels['#freenode'].modes:
+        #    irc.queueMsg(ircmsgs.IrcMsg("MODE #freenode -mzo %s" % irc.nick))
         for channel in targets.split(','):
             # handle CPRIVMSG
             if channel.startswith('@'):
@@ -1282,10 +1308,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if chan.called:
                     if time.time() - chan.called > self.registryValue('abuseDuration',channel=channel):
                         chan.called = False
-                        self.logChannel(irc,'INFO: [%s] returns to regular state' % channel)
+                        #self.logChannel(irc,'INFO: [%s] returns to regular state' % channel)
                 elif irc.nick in raw or '!ops' in raw:
                     if not chan.called:
-                        self.logChannel(irc,'INFO: [%s] ignores lifted, limits lowered (by %s) for %ss' % (channel,msg.nick,self.registryValue('abuseDuration',channel=channel)))
+                        #self.logChannel(irc,'INFO: [%s] ignores lifted, limits lowered (by %s) for %ss' % (channel,msg.nick,self.registryValue('abuseDuration',channel=channel)))
                         chan.called = time.time()
                 if isBanned:
                     continue
@@ -1476,6 +1502,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     if not key in i.queues:
                                         chs.append(channel)
                                         self.logChannel(irc,'AMSG: %s (%s) in %s' % (msg.nick,text,', '.join(chs)))
+                                        for channel in i.channels:
+                                            chan = self.getChan(irc,channel)
+                                            life = self.registryValue('computedPatternLife',channel=channel)
+                                            if not chan.patterns:
+                                                chan.patterns = utils.structures.TimeoutQueue(life)
+                                            elif chan.patterns.timeout != life:
+                                                chan.patterns.setTimeout(life)
+                                            chan.patterns.enqueue(text.lower())
                                         def rc():
                                             i = self.getIrc(irc)
                                             if key in i.queues:
@@ -1930,8 +1964,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self.log.debug('abuse in %s : %s : %s/%s' % (channel,key,len(chan.buffers[kind][key]),limit))
             # chan.buffers[kind][key].reset()
             # queue not reseted, that way during life, it returns True
-            if not chan.called:
-                self.logChannel(irc,"INFO: [%s] ignores lifted, limits lowered due to %s abuses for %ss" % (channel,key,self.registryValue('abuseDuration',channel=channel))) 
+            #if not chan.called:
+                #self.logChannel(irc,"INFO: [%s] ignores lifted, limits lowered due to %s abuses for %ss" % (channel,key,self.registryValue('abuseDuration',channel=channel))) 
             chan.called = time.time()
             return True
         return False
@@ -2317,7 +2351,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     self.logChannel(irc,"EFNET: [%s] %s (%s)" % (channel,prefix,message))
         else:
             chan = self.getChan(irc,channel)
-            if chan.called or self.isAbuseOnChannel(irc,channel,'efnet',channel):
+            if self.isAbuseOnChannel(irc,channel,'efnet',channel):
                 h = '.'.join(ip.split('.')[::-1])
                 h = h + '.xbl.spamhaus.org.'
                 m = None         
