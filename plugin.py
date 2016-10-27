@@ -865,7 +865,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         t = time.time()
         prefix = '%s!%s@%s' % (nick,ident,host)
         mask = self.prefixToMask(irc,prefix,channel)
-        if isCloaked(msg.prefix):
+        if isCloaked(prefix):
             t = t - self.registryValue('ignoreDuration',channel=channel) - 1
         chan.nicks[nick] = [t,prefix,mask,'','']
 
@@ -876,13 +876,16 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if channel in irc.state.channels:
             for nick in irc.state.channels[channel].users:
                 if not nick in chan.nicks:
-                    hostmask = irc.state.nickToHostmask(nick)
-                    if ircutils.isUserHostmask(hostmask):
-                        mask = self.prefixToMask(irc,hostmask,channel)
-                        d = t 
-                        if isCloaked(hostmask):
-                            d = d - self.registryValue('ignoreDuration',channel=channel) - 1
-                        chan.nicks[nick] = [d,hostmask,mask,'','']
+                    try:
+                        hostmask = irc.state.nickToHostmask(nick)
+                        if ircutils.isUserHostmask(hostmask):
+                            mask = self.prefixToMask(irc,hostmask,channel)
+                            d = t 
+                            if isCloaked(hostmask):
+                                d = d - self.registryValue('ignoreDuration',channel=channel) - 1
+                            chan.nicks[nick] = [d,hostmask,mask,'','']
+                    except:
+                        continue
 
     def do001 (self,irc,msg):
         i = self.getIrc(irc)
