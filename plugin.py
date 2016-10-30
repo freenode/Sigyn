@@ -1961,7 +1961,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 chan.patterns = utils.structures.TimeoutQueue(life)
             elif chan.patterns.timeout != life:
                 chan.patterns.setTimeout(life)
-            if len(text) > self.registryValue('computedPattern',channel=channel):
+            if self.registryValue('computedPattern',channel=channel) > -1 and len(text) > self.registryValue('computedPattern',channel=channel):
                 repeats = list(repetitions(text))
                 candidate = ''
                 patterns = {}
@@ -2064,13 +2064,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 break
         if flag:
             result = self.isBadOnChannel(irc,channel,kind,channel)
-            if result and pattern:
+            if result and pattern and length > -1:
                 life = self.registryValue('computedPatternLife',channel=channel)
                 if not chan.patterns:
                     chan.patterns = utils.structures.TimeoutQueue(life)
                 elif chan.patterns.timeout != life:
                     chan.patterns.setTimeout(life)
-                if len(pattern) > self.registryValue('computedPattern',channel=channel):
+                if len(pattern) > length:
                     pattern = pattern[:-1]
                     found = False
                     for p in chan.patterns:

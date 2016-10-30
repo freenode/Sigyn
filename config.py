@@ -189,7 +189,7 @@ conf.registerChannelValue(Sigyn, 'ignoreDuration',
 
 # abuses lowered thresold for given channel and a given abuse, and lift ignores
 conf.registerChannelValue(Sigyn, 'abusePermit',
-    registry.Integer(1,"""-1 to disable, reduces threshold of triggers when they occurs more than abusePermit during abuseLife"""))
+    registry.Integer(-1,"""-1 to disable, reduces threshold of triggers when they occurs more than abusePermit during abuseLife"""))
 conf.registerChannelValue(Sigyn, 'abuseLife',
     registry.PositiveInteger(1,"""life duration of message in the buffer detection, in seconds"""))
 conf.registerChannelValue(Sigyn, 'abuseDuration',
@@ -215,7 +215,7 @@ conf.registerChannelValue(Sigyn, 'lowFloodLife',
     registry.PositiveInteger(1,"""life duration of message in the lowFlood buffer detection"""))
 
 conf.registerChannelValue(Sigyn, 'repeatPermit',
-    registry.Integer(1,"""number of repeated messages allowed during repeatLife"""))
+    registry.Integer(-1,"""number of repeated messages allowed during repeatLife"""))
 conf.registerChannelValue(Sigyn, 'repeatLife',
     registry.PositiveInteger(1,"""life duration of message in the repeat buffer detection"""))
 conf.registerChannelValue(Sigyn, 'repeatPercent',
@@ -241,12 +241,12 @@ conf.registerChannelValue(Sigyn, 'massRepeatLife',
 conf.registerChannelValue(Sigyn, 'massRepeatPercent',
     registry.Probability(1.00,"""percentage similarity between previous and current message to trigger a massRepeat count"""))
 conf.registerChannelValue(Sigyn, 'massRepeatMinimum',
-    registry.PositiveInteger(1,"""minimun number of chars to enter massRepeat detection"""))
+    registry.PositiveInteger(1,"""minimum number of chars to enter massRepeat detection"""))
 
 conf.registerChannelValue(Sigyn, 'computedPattern',
-    registry.Integer(1,"""minimun number of chars needed to keep it as a spam pattern, -1 to disable"""))
+    registry.Integer(-1,"""minimun number of chars needed to keep it as a spam pattern, -1 to disable"""))
 conf.registerChannelValue(Sigyn, 'computedPatternLife',
-    registry.Integer(1,"""life in seconds of computed pattern, -1 to disable"""))
+    registry.PositiveInteger(1,"""life in seconds of computed pattern"""))
 conf.registerChannelValue(Sigyn, 'shareComputedPatternID',
     registry.Integer(-1,"""share the temporary pattern created to all channels with the same number, -1 to disable"""))
 
