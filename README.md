@@ -12,15 +12,17 @@ You must tweak default settings to fits your needs.
     lspattern [--deep] <id|pattern> : search patterns inside database, use pattern's id for full information, and --deep to search on disabled pattern
     editpattern <id> <limit> <life> [<comment>] : change some values of a pattern and add a optional comment
     togglepattern <id> <boolean> : enable or disable a pattern
-    lstmp [<channel>] : list computed pattern for a given <channel>
-    rmtmp [<channel>] : remove computed pattern for a given <channel>
-    defcon : put the bot in a agressive mode where limits are lowered and ignores are lifted
-    efnet <seconds> : kline users listed in efnetdnsbl on join for <seconds>
-    rehash : clear internal plugin state
+    checkpattern <text> : checks text against permanent patterns
+    lstmp <channel> : list computed pattern for a given <channel>
+    rmtmp <channel> : remove computed pattern for a given <channel>
+    addtmp <channel> <text> : add a temporary pattern for a given <channel>
+    addglobaltmp <text> : add a temporary pattern to all channels
+    defcon [<channel>]: put the bot in a agressive mode where limits are lowered and ignores are lifted
     oper : tell the bot to oper
     state [<channel>] : debug informations about internal state, for the whole ircd or a channel
     vacuum : optimize the database
-    
+    resync : synchronize user's presence ( after a plugin reload )
+        
 ## Behaviour ##
 
 Sigyn is coming from https://en.wikipedia.org/wiki/Sigyn

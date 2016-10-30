@@ -96,27 +96,10 @@ conf.registerGlobalValue(Sigyn, 'announcePermit',
 conf.registerGlobalValue(Sigyn, 'announceLife',
     registry.PositiveInteger(1,"""life of announce in memory (seconds)"""))
 
-
-# sasl abuses detection
-
-conf.registerGlobalValue(Sigyn, 'saslPermit',
-    registry.Integer(-1,"""number of sasl attempts allowed during saslLife, -1 to disable"""))
-conf.registerGlobalValue(Sigyn, 'saslLife', 
-    registry.PositiveInteger(1,"""life of sasl attempts in memory (seconds)"""))
-conf.registerGlobalValue(Sigyn, 'saslDuration',
-    registry.PositiveInteger(1,"""duration of DLine in minutes"""))
-conf.registerGlobalValue(Sigyn, 'saslChannel',
-    registry.String("","""channel where sasl attempts are send"""))
-conf.registerGlobalValue(Sigyn, 'saslNick',
-    registry.String("","""nick who send sasl informations"""))
-conf.registerGlobalValue(Sigyn, 'saslReason',
-    registry.String("Banned due to too many failed login attempts (SASL https://freenode.net/sasl/) in a short period, email kline@freenode.net when corrected. Thanks!","""reason used in dline"""))
-conf.registerGlobalValue(Sigyn, 'torServer',
-    registry.String("","""tor listing server"""))
-conf.registerChannelValue(Sigyn, 'torPorts',
-    registry.CommaSeparatedListOfStrings([''], """ports to check"""))
-conf.registerChannelValue(Sigyn, 'torTarget',
-    registry.String("","""ip of the targeted ircd, for tor checks"""))
+conf.registerGlobalValue(Sigyn, 'ipv4AbusePermit',
+     registry.Integer(-1, """check /24 on ipv4 klines made by the bot, -1 to disable, if triggered, announce in logChannel"""))
+conf.registerGlobalValue(Sigyn, 'ipv4AbuseLife',
+     registry.PositiveInteger(1, """life duration of those kline in seconds"""))
 
 # dronebl submit
 conf.registerGlobalValue(Sigyn, 'droneblKey',
@@ -155,7 +138,6 @@ conf.registerGlobalValue(Sigyn, 'nickChangePermit',
     registry.Integer(-1,"""number of server notices (nick changes) allowed for a given period"""))
 conf.registerGlobalValue(Sigyn, 'nickChangeLife',
     registry.PositiveInteger(1,"""life of notices in seconds"""))
-
 
 # channel flood snote
 conf.registerGlobalValue(Sigyn, 'channelFloodPermit',
@@ -199,15 +181,6 @@ conf.registerChannelValue(Sigyn, 'brokenReason',
 conf.registerChannelValue(Sigyn, 'brokenHost',
     registry.CommaSeparatedListOfStrings([''], """list of knowns broken host"""))
 
-
-# if a mass join of efnet users happens, bot will enter in defcon mode
-conf.registerChannelValue(Sigyn, 'efnetPermit',
-    registry.Integer(-1,"""number of efnet joins allowed during efnetLife, -1 to disable"""))
-conf.registerChannelValue(Sigyn, 'efnetLife',
-    registry.PositiveInteger(1,"""life duration of join allowed from efnet users"""))
-conf.registerChannelValue(Sigyn, 'efnetDuration',
-    registry.PositiveInteger(1,"""active effect of efnet klines on join"""))
-    
 # can be per channel's settings
 conf.registerChannelValue(Sigyn, 'ignoreChannel',
      registry.Boolean(False, """ignore everything in the channel"""))
