@@ -168,6 +168,10 @@ conf.registerGlobalValue(Sigyn, 'idPermit',
 conf.registerGlobalValue(Sigyn, 'idLife',
     registry.PositiveInteger(1,"""life duration of message in those snote"""))
 
+#change mode on defcon
+conf.registerChannelValue(Sigyn, 'defconMode',
+    registry.Boolean(False,"""changes +qz $~a -qz $~a on defcon"""))
+
 # Quit flood
 conf.registerChannelValue(Sigyn, 'brokenPermit',
     registry.Integer(-1,"""number of quit allowed"""))

@@ -151,7 +151,7 @@ addConverter('getPatternAndMatcher', getPatternAndMatcher)
 
 class Ircd (object):
     
-    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','dnv','patterns','throttled','lastDefcon')
+    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god')
 
     def __init__(self,irc):
         self.irc = irc
@@ -184,6 +184,7 @@ class Ircd (object):
         self.stats = {}
         self.throttled = False
         self.lastDefcon = False
+        self.god = False
 
     def __repr__(self):
         return '%s(patterns=%r, queues=%r, channels=%r, pending=%r, logs=%r, limits=%r, whowas=%r, klines=%r)' % (self.__class__.__name__,
@@ -475,8 +476,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             else:
                 i.defcon = time.time()
                 self.logChannel(irc,"INFO: ignores lifted and abuses end to klines for %ss by %s" % (self.registryValue('defcon'),msg.nick))
-            if '#freenode' in irc.state.channels and irc.nick in list(irc.state.channels['#freenode'].ops) and not 'z' in irc.state.channels['#freenode'].modes:
-                irc.sendMsg(ircmsgs.IrcMsg('MODE #freenode +qz $~a'))
+                # todo check current bot's umode
+                if not i.god:
+                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
+                else:
+                    for channel in irc.state.channels:
+                        if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
+                            if not 'z' in irc.state.channels[channel].modes:
+                                if irc.nick in list(irc.state.channels[channel].ops):
+                                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
+                                else:
+                                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
         irc.replySuccess()
     defcon = wrap(defcon,['owner',optional('channel')])
 
@@ -645,6 +655,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             j = urllib.urlopen('http://legacy.iphub.info/api.php?ip=%s&showtype=4' % ip)
             r = j.read()
             data = json.loads(r)
+            self.log.debug('%s registar is %s' % (ip,r))
             if 'asn' in data and len(data['asn']):
                 a = data['asn'].split(' ')
                 asn = a.pop(0)
@@ -960,6 +971,20 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     i.opered = False
                     if len(self.registryValue('operatorNick')) and len(self.registryValue('operatorPassword')):
                         irc.queueMsg(ircmsgs.IrcMsg('OPER %s %s' % (self.registryValue('operatorNick'),self.registryValue('operatorPassword'))))
+                elif mode == '+p':
+                    i.god = True
+                    self.log.debug('%s is switching to god' % irc.nick)
+                    if i.defcon:
+                        for channel in irc.state.channels:
+                            if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
+                                if not 'z' in irc.state.channels[channel].modes:
+                                    if irc.nick in list(irc.state.channels[channel].ops):
+                                        irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
+                                    else:
+                                        irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
+                elif mode == '-p':
+                    i.god = False
+                    self.log.debug('%s is switching to mortal' % irc.nick)    
         elif target in irc.state.channels and 'm' in irc.state.channels[target].modes:
             modes = ircutils.separateModes(msg.args[1:])
             for change in modes:
@@ -1277,8 +1302,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 i.lastDefcon = time.time()
                 i.defcon = False
                 self.logChannel(irc,"INFO: triggers restored to normal behaviour")
-                if '#freenode' in irc.state.channels and irc.nick in list(irc.state.channels['#freenode'].ops) and 'z' in irc.state.channels['#freenode'].modes:
-                    irc.sendMsg(ircmsgs.IrcMsg('MODE #freenode -qz $~a'))
+                #irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
+                for channel in irc.state.channels:
+                    if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
+                        if 'z' in irc.state.channels[channel].modes and irc.nick in list(irc.state.channels[channel].ops) and not 'm' in irc.state.channels[channel].modes:
+                            irc.sendMsg(ircmsgs.IrcMsg('MODE %s -qz $~a' % channel))
         if i.netsplit:
             if time.time() > i.netsplit:
                 i.netsplit = False
@@ -1512,7 +1540,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         nicks = self.registryValue('reportNicks')
         if msg.nick in nicks:
             i = self.getIrc(irc)
+            queue = self.getIrcQueueFor(irc,self.registryValue('reportChannel'),'lethalPatterns',7)
             if text.startswith('BAD:') and not '(tor' in text and '(' in text:
+                if msg.nick == 'topm-dnsbl':
+                    queue.enqueue(text)
                 permit = self.registryValue('reportPermit')
                 if permit > -1:
                     life = self.registryValue('reportLife')
@@ -1533,8 +1564,16 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 self.logChannel(irc,"BOT: Wave in progress (%s/%ss), ignores lifted, triggers thresholds lowered for %ss at least" % (self.registryValue('reportPermit'),self.registryValue('reportLife'),self.registryValue('defcon'))) 
                                 # Todo changes channel modes
                                 i.defcon = time.time()
-                                if '#freenode' in irc.state.channels and irc.nick in list(irc.state.channels['#freenode'].ops) and not 'z' in irc.state.channels['#freenode'].modes:
-                                    irc.sendMsg(ircmsgs.IrcMsg('MODE #freenode +qz $~a'))
+                                if not i.god:
+                                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
+                                else:
+                                    for channel in irc.state.channels:
+                                        if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
+                                            if not 'z' in irc.state.channels[channel].modes:
+                                                if irc.nick in list(irc.state.channels[channel].ops):
+                                                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
+                                                else:
+                                                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
                             i.defcon = time.time()
             else:
                 if i.netsplit and text.startswith('Join rate in '):
@@ -1550,14 +1589,20 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if found:
                         a = text.split('Killing client ')[1]
                         a = a.split(')')[0]
-                        ip = a.split('@')[1]
-                        if utils.net.isIPV4(ip):
-                            if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
-                                t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
-                                t.setDaemon(True)
-                                t.start()
-                        else:
-                            self.prefixToMask(irc,'*!*@%s' % ip,'',True)
+                        ip = a.split('@')[1]                       
+                        dronebled = False
+                        for m in queue:
+                            if ip in m:
+                                dronebled = True
+                                break
+                        if not dronebled:
+                            if utils.net.isIPV4(ip):
+                                if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                                    t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
+                                    t.setDaemon(True)
+                                    t.start()
+                            else:
+                                self.prefixToMask(irc,'*!*@%s' % ip,'',True)
 
     def doPrivmsg (self,irc,msg):
         self.handleMsg(irc,msg,False)
@@ -1834,7 +1879,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             (nick,ident,host) = ircutils.splitHostmask(user)
             if '/' in host:
                 if host.startswith('gateway/tor-sasl'):
-                    self.logChannel(irc,"NOTE: %s seems klined, please freeze the account" % mask)
+                    self.logChannel(irc,"NOTE: %s seems klined, please freeze the account" % user)
                     return
                 elif host.startswith('gateway/') or host.startswith('nat/'):
                     h = host.split('/')
@@ -2095,7 +2140,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if flag:
             result = self.isBadOnChannel(irc,channel,kind,mask)
         enough = False
-        if flag:
+        i = self.getIrc(irc)
+        if flag and not i.netsplit:
             if kind in chan.buffers and key in chan.buffers[kind]:
                 if len(chan.buffers[kind][key])/(limit * 1.0) > 0.66:
                     enough = True
@@ -2360,7 +2406,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         log = "BAD: [%s] %s (join/part) -> %s" % (channel,msg.prefix,mask)
                         comment = 'join/part flood in %s' % channel
                         self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),comment,self.registryValue('klineMessage'),log)
-                    if len(reason):
+                    if len(reason) and not reason.startswith('Kicked by @appservice-irc:matrix.org'):
                         bad = self.isChannelMassRepeat(irc,msg,channel,mask,reason)
                         if bad:
                             # todo, needs to see more on that one to avoid false positive
