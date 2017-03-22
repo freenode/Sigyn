@@ -52,6 +52,12 @@ Sigyn = conf.registerPlugin('Sigyn')
 conf.registerGlobalValue(Sigyn, 'enable',
      registry.Boolean(False, """set to True to enable kill and klines, otherwise bot will only report to logChannel"""))
 
+conf.registerGlobalValue(Sigyn, 'snoopChannel',
+     registry.String("", """channel where services stuff are announced"""))
+
+conf.registerGlobalValue(Sigyn, 'mxbl',
+     registry.CommaSeparatedListOfStrings([''],"""patterns to match"""))
+
 conf.registerGlobalValue(Sigyn, 'logChannel',
      registry.String("", """channel where bot's actions is announced"""))
 conf.registerGlobalValue(Sigyn, 'useNotice',
@@ -205,6 +211,15 @@ conf.registerChannelValue(Sigyn, 'bypassIgnoreLife',
     registry.PositiveInteger(1,"""in seconds"""))
 
 # channel protections
+conf.registerChannelValue(Sigyn, 'massJoinPermit',
+    registry.Integer(-1,"""number of similar nicks allowed during massJoinLife, -1 to disable"""))
+conf.registerChannelValue(Sigyn, 'massJoinLife',
+    registry.PositiveInteger(1,"""life duration of message in the massJoindetection"""))
+conf.registerChannelValue(Sigyn, 'massJoinPercent',
+    registry.Probability(1.00,"""percent of similarity between two nicks who joined a channel during massJoinLife"""))
+conf.registerChannelValue(Sigyn, 'massJoinMinimum',
+    registry.PositiveInteger(1,"""length of nick to match as least"""))
+
 conf.registerChannelValue(Sigyn, 'floodPermit',
     registry.Integer(-1,"""number of messages allowed during floodLife, -1 to disable"""))
 conf.registerChannelValue(Sigyn, 'floodLife',
