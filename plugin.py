@@ -1330,7 +1330,16 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 i.stats[msg.args[1]] = i.stats[msg.args[1]] + 1
             else:
                 i.stats[msg.args[1]] = 0
-            
+    
+    def do728 (self,irc,msg):
+        i = self.getIrc(irc)
+        channel = msg.args[1]
+        value = msg.args[3]
+        op = msg.args[4]
+        if self.registryValue('defconMode',channel=channel) and not i.defcon:
+            if value == '$~a' and op == irc.prefix:
+                irc.sendMsg(ircmsgs.IrcMsg('MODE %s -qz $~a' % channel))
+    
     def handleMsg (self,irc,msg,isNotice):
         if not ircutils.isUserHostmask(msg.prefix):
             return
@@ -1360,7 +1369,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 for channel in irc.state.channels:
                     if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
                         if 'z' in irc.state.channels[channel].modes and irc.nick in list(irc.state.channels[channel].ops) and not 'm' in irc.state.channels[channel].modes:
-                            irc.sendMsg(ircmsgs.IrcMsg('MODE %s -qz $~a' % channel))
+                            #irc.sendMsg(ircmsgs.IrcMsg('MODE %s -qz $~a' % channel))
+                            irc.queueMsg(ircmsgs.IrcMsg('MODE %s q' % channel))
         if i.netsplit:
             if time.time() > i.netsplit:
                 i.netsplit = False
