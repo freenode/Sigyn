@@ -94,6 +94,15 @@ conf.registerGlobalValue(Sigyn, 'lagInterval',
 conf.registerGlobalValue(Sigyn, 'ghostPermit',
      registry.Integer(-1, """max number of ghost connections allowed"""))
 
+conf.registerGlobalValue(Sigyn, 'saslPermit',
+    registry.Integer(-1,"""sasl attempts allowed, -1 to disable"""))
+conf.registerGlobalValue(Sigyn, 'saslLife',
+     registry.PositiveInteger(300, """life of messages to keep"""))
+conf.registerGlobalValue(Sigyn, 'saslDuration',
+     registry.PositiveInteger(240, """dline duration in minutes"""))
+conf.registerGlobalValue(Sigyn, 'saslMessage',
+     registry.String("Banned due to too many failed login attempts in a short period, email kline@freenode.net when corrected. Thanks!", """dline message"""))
+
 conf.registerChannelValue(Sigyn, 'eirDuration',
      registry.String("", """eir dnv duration"""))
 

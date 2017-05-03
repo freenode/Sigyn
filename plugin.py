@@ -777,6 +777,22 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             irc.replyError('operatorNick or operatorPassword is empty')
     oper = wrap(oper,['owner'])
 
+    def undline (self,irc,msg,args,txt):
+        """<ip>
+           undline an ip
+        """
+        irc.queueMsg(ircmsgs.IrcMsg('UNDLINE %s on *' % txt))
+        irc.replySuccess()
+    undline = wrap(undline,['owner','ip'])
+
+
+    def checkresolve (self,irc,msg,args,txt):
+        """<nick!ident@hostmask> 
+          
+           returns computed hostmask"""
+        irc.reply(self.prefixToMask(irc,txt))
+    checkresolve = wrap(checkresolve,['owner','text'])
+
     # internal stuff
 
     def resolve (self,irc,prefix,channel='',dnsbl=False):
@@ -789,11 +805,25 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             resolver = dns.resolver.Resolver()
             resolver.timeout = self.registryValue('resolverTimeout')
             resolver.lifetime = self.registryValue('resolverTimeout')
-            ips = resolver.query(host,'A')
             L = []
+            ips = None
+            try:
+                ips = resolver.query(host,'AAAA')
+            except:
+                ips = None
             if ips:
                 for ip in ips:
-                    L.append(str(ip))
+                    if not str(ip) in L:
+                        L.append(str(ip))
+            try:
+                ips = resolver.query(host,'A')
+            except:
+                ips = None
+            if ips:
+                for ip in ips:
+                    if not str(ip) in L:
+                        L.append(str(ip))
+            self.log.debug('%s resolved as %s' % (prefix,L))
             if len(L) == 1:
                 h = L[0]
                 if ':' in h:
@@ -2031,7 +2061,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.handleNickSnote(irc,text)
             elif text.startswith('User') and text.endswith('is a possible spambot'):
                 self.handleJoinSnote(irc,text)
-            elif 'failed login attempts to' in text and not '<sasl>' in text:
+            elif 'failed login attempts to' in text and not 'SASL' in text:
                 self.handleIdSnote(irc,text)
             elif text.startswith('Too many clients, rejecting ') or text.startswith('All connections in use.') or text.startswith('creating SSL/TLS socket pairs: 24 (Too many open files)'):
                 i = self.getIrc(irc)
@@ -2064,8 +2094,37 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         t.start()
                 else:
                     self.prefixToMask(irc,'*!*@%s' % ip,'',True)
+            elif 'failed login attempts to' in text and 'SASL' in text:
+                self.handleSaslFailure(irc,text)
         else:
             self.handleMsg(irc,msg,True)
+
+    def handleSaslFailure (self,irc,text):
+        i = self.getIrc(irc)
+        limit = self.registryValue('saslPermit')
+        if limit < 0:
+            return
+        life = self.registryValue('saslLife')
+        account = text.split('failed login attempts to ')[1].split('.')[0]
+        host = text.split('<Unknown user (via SASL):')[1].split('>')[0]
+        q = self.getIrcQueueFor(irc,'sasl',account,life)              
+        q.enqueue(host)
+        hosts = {}
+        if len(q) > limit:
+            for ip in q:
+                hosts[ip] = ip
+            q.reset()
+        q = self.getIrcQueueFor(irc,'sasl',host,life)
+        q.enqueue(account)
+        if len(q) > limit:
+            q.reset()
+            hosts[host] = host
+        if self.registryValue('enable'):
+            duration = self.registryValue('saslDuration')
+            if len(hosts) > 0:
+                for h in hosts:
+#                    irc.sendMsg(ircmsgs.IrcMsg('DLINE %s %s on * :%s' % (duration,h,self.registryValue('saslMessage'))))
+                    self.logChannel(irc,'DLINE: %s (%s) (%s/%ss)' % (h,'SASL failures',limit,life))
 
     def hasAbuseOnChannel (self,irc,channel,key):
         chan = self.getChan(irc,channel)
@@ -2596,6 +2655,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         continue
                     bad = False
                     flag = ircdb.makeChannelCapability(channel, 'broken')
+                    if 'tor-sasl' in mask:
+                        continue
                     if ircdb.checkCapability(msg.prefix, flag):
                         bad = self.isBadOnChannel(irc,channel,'broken',mask)
                     if isBanned:
