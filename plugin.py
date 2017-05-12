@@ -371,7 +371,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
         type, uri = urllib.splittype(droneblHost)
         host, handler = urllib.splithost(uri)
-        connection = httplib.HTTPConnection(host)
+        connection = httplib.HTTPConnection(host,80,timeout=20)
         connection.putrequest("POST",handler)
         connection.putheader("Content-Type", "text/xml")
         connection.putheader("Content-Length", str(int(len(request))))
@@ -396,7 +396,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
         type, uri = urllib.splittype(droneblHost)
         host, handler = urllib.splithost(uri)
-        connection = httplib.HTTPConnection(host)
+        connection = httplib.HTTPConnection(host,80,timeout=20)
         connection.putrequest("POST",handler)
         connection.putheader("Content-Type", "text/xml")
         connection.putheader("Content-Length", str(int(len(request))))
@@ -1429,7 +1429,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if time.time() - chan.called > self.registryValue('abuseDuration',channel=channel):
                         chan.called = False
                         self.logChannel(irc,'INFO: [%s] returns to regular state' % channel)
-                        if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
+                        if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel) and not i.defcon:
                             if 'z' in irc.state.channels[channel].modes and irc.nick in list(irc.state.channels[channel].ops) and not 'm' in irc.state.channels[channel].modes:
                                 irc.sendMsg(ircmsgs.IrcMsg('MODE %s -qz $~a' % channel))
                 if isBanned:
@@ -1717,7 +1717,35 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def doPrivmsg (self,irc,msg):
         self.handleMsg(irc,msg,False)
         try:
-            (recipients, text) = msg.args
+            i = self.getIrc(irc)
+            mask = self.prefixToMask(irc,msg.prefix)
+            (targets, text) = msg.args
+            text = text
+            if ircdb.checkCapability(msg.prefix, 'protected'):
+                return
+            for channel in targets.split(','):
+                if not irc.isChannel(channel) and channel == irc.nick:
+                    killReason = self.registryValue('killMessage',channel=channel)
+                    for k in i.patterns:
+                        pattern = i.patterns[k]
+                        if pattern.match(text):
+                            if pattern.limit == 0:
+                                reason = 'matchs #%s in pm' % (pattern.uid)
+                                log = 'BAD: [%s] %s (matchs #%s) -> %s' % (channel,msg.prefix,pattern.uid,mask)
+                                self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
+                                i.count(self.getDb(irc.network),pattern.uid)
+                                break
+                            else:
+                                queue = self.getIrcQueueFor(irc,mask,pattern.uid,pattern.life)
+                                queue.enqueue(text)
+                                if len(queue) > pattern.limit:
+                                    reason = 'matchs #%s (%s/%ss) in pm' % (pattern.uid,pattern.limit,pattern.life)
+                                    log = 'BAD: [%s] %s (matchs #%s %s/%ss) -> %s' % (channel,msg.prefix,pattern.uid,pattern.limit,pattern.life,mask)
+                                    self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
+                                    self.rmIrcQueueFor(irc,mask)
+                                    i.count(self.getDb(irc.network),pattern.uid)
+                                    break
+                                i.count(self.getDb(irc.network),pattern.uid)                
         except:
             return
 
@@ -2085,15 +2113,18 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         if 'services.' in i.limits:
                             del i.limits['services.']
                     schedule.addEvent(rct,time.time()+self.registryValue('alertPeriod'))
-            elif 'K-Line for [*@' in text and '!dnsbl' in text:
-                ip = text.split('K-Line for [*@')[1].split(']')[0]
-                if utils.net.isIPV4(ip):
-                    if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
-                        t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
-                        t.setDaemon(True)
-                        t.start()
-                else:
-                    self.prefixToMask(irc,'*!*@%s' % ip,'',True)
+            elif 'K-Line for [*@' in text:
+                reason = text.split('K-Line for [*@')[1]
+                reason = reason.split(']')[1].replace('[','').replace(']','')
+                if '!dnsbl' in text or reason in self.registryValue('droneblPatterns'):
+                    ip = text.split('K-Line for [*@')[1].split(']')[0]
+                    if utils.net.isIPV4(ip):
+                        if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                            t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
+                            t.setDaemon(True)
+                            t.start()
+                    else:
+                        self.prefixToMask(irc,'*!*@%s' % ip,'',True)
             elif 'failed login attempts to' in text and 'SASL' in text:
                 self.handleSaslFailure(irc,text)
         else:
