@@ -123,6 +123,9 @@ conf.registerGlobalValue(Sigyn, 'droneblHost',
      registry.String("http://dronebl.org/RPC2", """where bot must do rpc calls"""))
 conf.registerGlobalValue(Sigyn, 'droneblPatterns',
     registry.CommaSeparatedListOfStrings([''],"""patterns to match"""))
+
+conf.registerGlobalValue(Sigyn, 'secretChannel',
+    registry.String("","""secretChannel"""))
 # report
 conf.registerGlobalValue(Sigyn, 'reportChannel',
     registry.String("","""channel of the instance"""))
