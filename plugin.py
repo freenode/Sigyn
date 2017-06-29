@@ -310,7 +310,7 @@ class Ircd (object):
         return updated
 
 class Chan (object):
-    __slots__ = ('channel', 'patterns', 'buffers', 'logs', 'nicks', 'called')
+    __slots__ = ('channel', 'patterns', 'buffers', 'logs', 'nicks', 'called','klines')
     def __init__(self,channel):
         self.channel = channel
         self.patterns = None
@@ -318,6 +318,8 @@ class Chan (object):
         self.logs = {}
         self.nicks = {}
         self.called = False
+        self.klines = utils.structures.TimeoutQueue(900)
+
     def __repr__(self):
         return '%s(channel=%r, patterns=%r, buffers=%r, logs=%r, nicks=%r)' % (self.__class__.__name__,
         self.channel, self.patterns, self.buffers, self.logs, self.nicks)
@@ -765,6 +767,34 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         else:
             irc.reply('unknown channel')
     rmtmp = wrap(rmtmp,['op'])
+
+    def unkline (self,irc,msg,args,nick):
+       """unkline <nick>
+          request unkline of <nick>, klined recently from your channel
+       """
+       channels = []
+       ops = []
+       for channel in irc.state.channels:
+           if msg.nick in irc.state.channels[channel].ops:
+               chan = self.getChan(irc,channel)
+               if len(chan.klines):
+                   for q in chan.klines:
+                       self.log.debug('%s :: %s' % (channel,q))
+                       if q.startswith(nick):
+                          ip = q.split(' ')[1]
+                          self.logChannel(irc,'OP: [%s] %s asked for removal of %s (%s)' % (channel,msg.nick,ip,nick))
+                          channels.append(channel)
+                          if not isCloaked('%s!%s' % (nick,ip)):
+                              irc.queueMsg(ircmsgs.IrcMsg('UNKLINE %s' % ip))
+                              irc.reply('Ban on %s with ip %s has been lifted' % (nick,ip))
+                          else:  
+                              irc.reply('your request has been submited to freenode staffer')
+               ops.append(channel)
+       if len(ops) and not len(channels):
+           irc.replyError("nothing matchs %s in recent bans from %s" % (nick,','.join(ops)))
+
+    unkline = wrap(unkline,['private','text'])
+
 
     def oper (self,irc,msg,args):
         """takes no arguments
@@ -1454,6 +1484,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             log = 'BAD: [%s] %s (matchs #%s) -> %s' % (channel,msg.prefix,pattern.uid,mask)
                             self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                             i.count(self.getDb(irc.network),pattern.uid)
+                            self.isAbuseOnChannel(irc,channel,'pattern',mask)                                
                             break
                         else:
                             queue = self.getIrcQueueFor(irc,mask,pattern.uid,pattern.life)
@@ -1465,6 +1496,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                                 self.rmIrcQueueFor(irc,mask)
                                 i.count(self.getDb(irc.network),pattern.uid)
+                                self.isAbuseOnChannel(irc,channel,'pattern',mask)
                                 break
                             i.count(self.getDb(irc.network),pattern.uid)
                 if isBanned:
@@ -1572,6 +1604,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             isBanned = True
                             reason = '%s %s' % (reason,bypassIgnore)
                             log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
+                            chan.klines.enqueue('%s %s' % (msg.nick,mask)) 
                             self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                         else:
                             self.logChannel(irc,'IGNORED: [%s] %s (%s)' % (channel,msg.prefix,reason))
@@ -1589,6 +1622,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     else:
                         isBanned = True
                         log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
+                        chan.klines.enqueue('%s %s' % (msg.nick,mask))
                         self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                         ip = mask.split('@')[1]
                         if hilight and i.defcon and utils.net.isIPV4(ip):
@@ -2233,9 +2267,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if not i.god:
                         irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
                     else:
-                        if irc.nick in list(irc.state.channels[channel].ops):
+                        if irc.nick in list(irc.state.channels[channel].ops) and not 'z' in list(irc.state.channels[channel].modes):
                             irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
-                        else:
+                        elif not 'z' in list(irc.state.channels[channel].modes):
                             irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
             chan.called = time.time()
             return True
