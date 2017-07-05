@@ -1917,6 +1917,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             umask = self.prefixToMask(irc,u)
                             self.kline(irc,u,umask,self.registryValue('klineDuration'),'snote flood on %s' % target)
                             self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (u,target,umask))
+                q = self.getIrcQueueFor(irc,'freenode','snoteFlood',life)
+                stored = False
+                for u in queue:
+                    if u == user:
+                        stored = True
+                        break
+                if not stored:
+                    q.enqueue(user)
+                users = list(q)
+                if len(q) > limit:
+                    q.reset()
+                    self.logChannel(irc,"NOTE: Loads of pm flood (snote) from : %s" % (' '.join(users)))
+
 
     def handleJoinSnote (self,irc,text):
         limit = self.registryValue('joinRatePermit')
