@@ -461,7 +461,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def defcon (self,irc,msg,args,channel):
         """[<channel>] 
 
-        limits are lowered, globaly or for a specific <channel>"""
+        limits are lowered, globally or for a specific <channel>"""
         i = self.getIrc(irc)
         if channel and channel != self.registryValue('logChannel'):
             if channel in i.channels and self.registryValue('abuseDuration',channel=channel) > 0:
@@ -528,15 +528,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if pattern.match(text):
                 patterns.append('#%s' % pattern.uid)
         if len(patterns):
-            irc.queueMsg(ircmsgs.privmsg(msg.nick,'%s matchs: %s' % (len(patterns),', '.join(patterns))))
+            irc.queueMsg(ircmsgs.privmsg(msg.nick,'%s matches: %s' % (len(patterns),', '.join(patterns))))
         else:
-            irc.reply('nothing matchs')  
+            irc.reply('No matches')  
     checkpattern = wrap(checkpattern,['owner','text'])
 
     def lspattern (self,irc,msg,args,optlist,pattern):
         """[--deep] <id|pattern>
 
-        returns patterns which matchs pattern or info about pattern #id, use --deep to search on deactivated patterns"""
+        returns patterns which matches pattern or info about pattern #id, use --deep to search on deactivated patterns"""
         i = self.getIrc(irc)
         deep = False
         for (option, arg) in optlist:
@@ -788,10 +788,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                               irc.queueMsg(ircmsgs.IrcMsg('UNKLINE %s' % ip))
                               irc.reply('Ban on %s with ip %s has been lifted' % (nick,ip))
                           else:  
-                              irc.reply('your request has been submited to freenode staffer')
+                              irc.reply('Your request has been submited to freenode staffer.')
                ops.append(channel)
        if len(ops) and not len(channels):
-           irc.replyError("nothing matchs %s in recent bans from %s" % (nick,','.join(ops)))
+           irc.replyError("No matches %s in recent bans from %s" % (nick,','.join(ops)))
 
     unkline = wrap(unkline,['private','text'])
 
@@ -1480,8 +1480,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if pattern.match(raw):
                         if pattern.limit == 0:
                             isBanned = True
-                            reason = 'matchs #%s in %s' % (pattern.uid,channel)
-                            log = 'BAD: [%s] %s (matchs #%s) -> %s' % (channel,msg.prefix,pattern.uid,mask)
+                            reason = 'matches #%s in %s' % (pattern.uid,channel)
+                            log = 'BAD: [%s] %s (matches #%s) -> %s' % (channel,msg.prefix,pattern.uid,mask)
                             self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                             i.count(self.getDb(irc.network),pattern.uid)
                             self.isAbuseOnChannel(irc,channel,'pattern',mask)                                
@@ -1491,8 +1491,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             queue.enqueue(text)
                             if len(queue) > pattern.limit:
                                 isBanned = True
-                                reason = 'matchs #%s (%s/%ss) in %s' % (pattern.uid,pattern.limit,pattern.life,channel)
-                                log = 'BAD: [%s] %s (matchs #%s %s/%ss) -> %s' % (channel,msg.prefix,pattern.uid,pattern.limit,pattern.life,mask)
+                                reason = 'matches #%s (%s/%ss) in %s' % (pattern.uid,pattern.limit,pattern.life,channel)
+                                log = 'BAD: [%s] %s (matches #%s %s/%ss) -> %s' % (channel,msg.prefix,pattern.uid,pattern.limit,pattern.life,mask)
                                 self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                                 self.rmIrcQueueFor(irc,mask)
                                 i.count(self.getDb(irc.network),pattern.uid)
@@ -1516,7 +1516,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if chan.patterns:
                     for pattern in chan.patterns:
                         if pattern in text:
-                            reason = 'matchs tmp pattern in %s' % channel
+                            reason = 'matches tmp pattern in %s' % channel
                             # redo duration
                             chan.patterns.enqueue(pattern)
                             break
@@ -1795,8 +1795,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         pattern = i.patterns[k]
                         if pattern.match(text):
                             if pattern.limit == 0:
-                                reason = 'matchs #%s in pm' % (pattern.uid)
-                                log = 'BAD: [%s] %s (matchs #%s) -> %s' % (channel,msg.prefix,pattern.uid,mask)
+                                reason = 'matches #%s in pm' % (pattern.uid)
+                                log = 'BAD: [%s] %s (matches #%s) -> %s' % (channel,msg.prefix,pattern.uid,mask)
                                 self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                                 i.count(self.getDb(irc.network),pattern.uid)
                                 break
@@ -1804,8 +1804,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 queue = self.getIrcQueueFor(irc,mask,pattern.uid,pattern.life)
                                 queue.enqueue(text)
                                 if len(queue) > pattern.limit:
-                                    reason = 'matchs #%s (%s/%ss) in pm' % (pattern.uid,pattern.limit,pattern.life)
-                                    log = 'BAD: [%s] %s (matchs #%s %s/%ss) -> %s' % (channel,msg.prefix,pattern.uid,pattern.limit,pattern.life,mask)
+                                    reason = 'matches #%s (%s/%ss) in pm' % (pattern.uid,pattern.limit,pattern.life)
+                                    log = 'BAD: [%s] %s (matches #%s %s/%ss) -> %s' % (channel,msg.prefix,pattern.uid,pattern.limit,pattern.life,mask)
                                     self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                                     self.rmIrcQueueFor(irc,mask)
                                     i.count(self.getDb(irc.network),pattern.uid)
