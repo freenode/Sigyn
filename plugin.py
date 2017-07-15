@@ -788,7 +788,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                               irc.queueMsg(ircmsgs.IrcMsg('UNKLINE %s' % ip))
                               irc.reply('Ban on %s with ip %s has been lifted' % (nick,ip))
                           else:  
-                              irc.reply('Your request has been submited to freenode staffer.')
+                              irc.reply('Your request has been submitted to freenode staff.')
                ops.append(channel)
        if len(ops) and not len(channels):
            irc.replyError("No matches %s in recent bans from %s" % (nick,','.join(ops)))
