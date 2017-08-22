@@ -2194,7 +2194,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             elif 'K-Line for [*@' in text:
                 reason = text.split('K-Line for [*@')[1]
                 reason = reason.split(']')[1].replace('[','').replace(']','')
-                if '!dnsbl' in text or reason in self.registryValue('droneblPatterns'):
+                hasPattern = False
+                for p in self.registryValue('droneblPatterns'):
+                     if p in reason:
+                         hasPattern = True
+                         break
+                if '!dnsbl' in text or hasPattern:
                     ip = text.split('K-Line for [*@')[1].split(']')[0]
                     if utils.net.isIPV4(ip):
                         if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
