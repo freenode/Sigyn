@@ -1342,6 +1342,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            del i.mx[nick]
            mask = self.prefixToMask(irc,hostmask)
            self.logChannel(irc,'SERVICE: %s registered %s with *@%s is in mxbl --> %s' % (hostmask,nick,email,mask))
+           self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'register abuses (%s) !dnsbl' % email)
 
     def resolveSnoopy (self,irc,account,email):
        try:
@@ -1349,28 +1350,35 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            resolver.timeout = 10
            resolver.lifetime = 10
            found = False
-           ips = resolver.query(email,'MX')
+           items = self.registryValue('mxbl')
+           for item in items:
+               if email in item:
+                   found = True
+                   break
+           ips = None
+           if not found:
+               ips = resolver.query(email,'MX')
            if ips:
-                for ip in ips:
-                    ip = '%s' % ip
-                    ip = ip.split(' ')[1][:-1]
-                    q = resolver.query(ip,'A')
-                    if q:
-                        for i in q:
-                            i = '%s' % i
-                            items = self.registryValue('mxbl')
-                            for item in items:
-                                if i in item:
-                                    found = True
-                                    break
-                            if found:
-                                break
+               for ip in ips:
+                   ip = '%s' % ip
+                   ip = ip.split(' ')[1][:-1]
+                   q = resolver.query(ip,'A')
+                   if q:
+                       for i in q:
+                           i = '%s' % i
+                           items = self.registryValue('mxbl')
+                           for item in items:
+                               if i in item:
+                                   found = True
+                                   break
+                           if found:
+                               break
            if found:
                i = self.getIrc(irc)
                i.mx[account] = email
                irc.queueMsg(ircmsgs.IrcMsg('WHOIS %s' % account))
        except:
-           self.log.debug('Snoopy error with %s' % irc)
+           self.log.debug('Snoopy error with %s' % email)
 
     def handleSnoopMessage (self,irc,msg):
         (targets, text) = msg.args
@@ -1709,6 +1717,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 t.start()                                                                                                                                              
                             else:
                                 self.prefixToMask(irc,'*!*@%s' % ip,'',True)
+            if text.startswith('REGISTER:BADEMAIL: '):
+               text = text.replace('\x02','')
+               t = text.split(' ')
+               account = t[1]
+               email = t[3].split('@')[1]
+               t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email))
+               t.setDaemon(True)
+               t.start() 
 
     def handleReportMessage (self,irc,msg):
         (targets, text) = msg.args
@@ -2212,6 +2228,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.handleSaslFailure(irc,text)
         else:
             self.handleMsg(irc,msg,True)
+   
+    def do215 (self,irc,msg):
+        i = self.getIrc(irc)
+        if msg.args[0] == irc.nick and msg.args[1] == 'I' and msg.args[2] == 'NOMATCH':
+            self.log.debug('do215 %s' % msg.args)
+
 
     def handleSaslFailure (self,irc,text):
         i = self.getIrc(irc)
@@ -2237,6 +2259,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             duration = self.registryValue('saslDuration')
             if len(hosts) > 0:
                 for h in hosts:
+                    irc.queueMsg(ircmsgs.IrcMsg('TESTLINE %s' % h))
 #                    irc.sendMsg(ircmsgs.IrcMsg('DLINE %s %s on * :%s' % (duration,h,self.registryValue('saslMessage'))))
                     self.logChannel(irc,'DLINE: %s (%s) (%s/%ss)' % (h,'SASL failures',limit,life))
 
