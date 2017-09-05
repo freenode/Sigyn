@@ -1338,13 +1338,18 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
        if nick in i.mx:
            ident = msg.args[2]
            hostmask = '%s!%s@%s' % (nick,ident,msg.args[3])
-           email = i.mx[nick]
+           email = i.mx[nick][0]
+           badmail = i.mx[nick][1]
+           mx = i.mx[nick][2]
            del i.mx[nick]
            mask = self.prefixToMask(irc,hostmask)
            self.logChannel(irc,'SERVICE: %s registered %s with *@%s is in mxbl --> %s' % (hostmask,nick,email,mask))
            self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'register abuses (%s) !dnsbl' % email)
+           if badmail:
+               irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :BADMAIL ADD *@%s %s' % (email,mx)))
+               irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FDROP %s' % nick))
 
-    def resolveSnoopy (self,irc,account,email):
+    def resolveSnoopy (self,irc,account,email,badmail):
        try:
            resolver = dns.resolver.Resolver()
            resolver.timeout = 10
@@ -1369,13 +1374,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                            items = self.registryValue('mxbl')
                            for item in items:
                                if i in item:
-                                   found = True
+                                   found = item
                                    break
                            if found:
                                break
            if found:
                i = self.getIrc(irc)
-               i.mx[account] = email
+               i.mx[account] = [email,badmail,found]
                irc.queueMsg(ircmsgs.IrcMsg('WHOIS %s' % account))
        except:
            self.log.debug('Snoopy error with %s' % email)
@@ -1386,7 +1391,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if msg.nick == 'NickServ' and 'REGISTER:' in text:
             email = text.split('@')[1]
             account = text.split(' ')[0]
-            t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email))
+            t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email,True))
             t.setDaemon(True)
             t.start()
  
@@ -1722,7 +1727,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                t = text.split(' ')
                account = t[1]
                email = t[3].split('@')[1]
-               t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email))
+               t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email,False))
                t.setDaemon(True)
                t.start() 
 
