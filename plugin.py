@@ -1630,7 +1630,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     if key in i.queues:
                                         del i.queues[key]
                                 schedule.addEvent(rwu,time.time()+self.registryValue('alertPeriod'))
-                                irc.queueMsg(ircmsgs.notice(msg.nick,"Your actions in %s tripped automated anti-spam measures, but were ignored based on your time in channel; stop now, or automated action will still be taken. If you have any questions, please don't hesitate to contact a member of staff" % channel))
+                                if msg.nick:
+                                    irc.queueMsg(ircmsgs.notice(msg.nick,"Your actions in %s tripped automated anti-spam measures, but were ignored based on your time in channel; stop now, or automated action will still be taken. If you have any questions, please don't hesitate to contact a member of staff" % channel))
 
                     else:
                         isBanned = True
