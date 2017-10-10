@@ -993,12 +993,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         channel = msg.args[1]
         chan = self.getChan(irc,channel)
         t = time.time()
+        hasStaff = False
         if channel in irc.state.channels:
-            for nick in irc.state.channels[channel].users:
+            for nick in list(irc.state.channels[channel].users):
                 if not nick in chan.nicks:
                     try:
                         hostmask = irc.state.nickToHostmask(nick)
                         if ircutils.isUserHostmask(hostmask):
+                            if 'freenode/staff/' in hostmask:
+                                hasStaff = True
                             mask = self.prefixToMask(irc,hostmask,channel)
                             d = t 
                             if isCloaked(hostmask):
@@ -1006,6 +1009,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             chan.nicks[nick] = [d,hostmask,mask,'','']
                     except:
                         continue
+        if not hasStaff:
+            self.logChannel(irc,"INFO: i'm in %s without staffer supervision" % channel)
 
     def do001 (self,irc,msg):
         i = self.getIrc(irc)
@@ -1063,7 +1068,26 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             chan.nicks[msg.nick] = [time.time(),a[1],a[2],a[3],a[4]]
                         else:
                             chan.nicks[msg.nick] = [time.time(),a[1],a[2],'','']
-                       
+                if mode == '+z':
+                    if not irc.nick in list(irc.state.channels[channel].ops):
+                        irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG ChanServ :OP %s' % channel))
+                    if channel == self.registryValue('mainChannel'):
+                        self.opStaffers(irc)                    
+                                                         
+    def opStaffers (self,irc):
+        ops = []
+        if self.registryValue('mainChannel')  in irc.state.channels:
+           for nick in list(irc.state.channels[channel].users):
+               if not nick in list(irc.state.channels[channel].ops):
+                   try:
+                       mask = irc.state.nickToHostmask(nick)
+                       if mask and mask.find('@freenode/staff/') != -1:
+                           ops.append(nick)
+                   except:
+                       continue
+        if len(ops):
+            for i in range(0, len(ops), 4):
+                irc.sendMsg(ircmsgs.ops(channel,ops[i:i+4],irc.prefix))
 
     def getIrc (self,irc):
         if not irc.network in self._ircs:
@@ -1422,8 +1446,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         op = msg.args[4]
         if self.registryValue('defconMode',channel=channel) and not i.defcon:
             if value == '$~a' and op == irc.prefix:
-                irc.sendMsg(ircmsgs.IrcMsg('MODE %s -qz $~a' % channel))
-    
+                if channel == self.registryValue('mainChannel'):
+                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s -qz $~a' % channel))
+                else:
+                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s -qzo $~a %s' % (channel,irc.nick)))
+
     def handleMsg (self,irc,msg,isNotice):
         if not ircutils.isUserHostmask(msg.prefix):
             return
@@ -1633,7 +1660,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             if i.defcon:
                                 i.defcon = time.time()
                         else:
-                            q = i.getIrcQueueFor(irc,mask,'warned-%s' % channel,self.registryValue('alertPeriod'))
+                            q = self.getIrcQueueFor(irc,mask,'warned-%s' % channel,self.registryValue('alertPeriod'))
                             if len(q) == 0:
                                 q.enqueue(text)
                                 self.logChannel(irc,'IGNORED: [%s] %s (%s)' % (channel,msg.prefix,reason))
