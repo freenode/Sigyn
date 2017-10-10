@@ -151,7 +151,7 @@ addConverter('getPatternAndMatcher', getPatternAndMatcher)
 
 class Ircd (object):
     
-    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx')
+    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx','tokline')
 
     def __init__(self,irc):
         self.irc = irc
@@ -186,6 +186,7 @@ class Ircd (object):
         self.lastDefcon = False
         self.god = False
         self.mx = {}
+        self.tokline = {}
 
     def __repr__(self):
         return '%s(patterns=%r, queues=%r, channels=%r, pending=%r, logs=%r, limits=%r, whowas=%r, klines=%r)' % (self.__class__.__name__,
@@ -357,19 +358,21 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def removeDnsbl (self,irc,ip,droneblHost,droneblKey):
         def check(answer):
-            if not answer.find('listed="1"') == -1:
-                id = answer.split('id="')[1]
-                id = id.split('"')[0]
-                add = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><remove id='"+id+"' /></request>"
-                type, uri = urllib.splittype(droneblHost)
-                host, handler = urllib.splithost(uri)
-                connection = httplib.HTTPConnection(host)
-                connection.putrequest("POST",handler)
-                connection.putheader("Content-Type", "text/xml")
-                connection.putheader("Content-Length", str(int(len(add))))
-                connection.endheaders()
-                connection.send(add)
-                self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,id))
+            if answer.find('listed="1"') != -1:
+                if answer.find('type="18"') != -1:
+                    return
+            id = answer.split('id="')[1]
+            id = id.split('"')[0]
+            add = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><remove id='"+id+"' /></request>"
+            type, uri = urllib.splittype(droneblHost)
+            host, handler = urllib.splithost(uri)
+            connection = httplib.HTTPConnection(host)
+            connection.putrequest("POST",handler)
+            connection.putheader("Content-Type", "text/xml")
+            connection.putheader("Content-Length", str(int(len(add))))
+            connection.endheaders()
+            connection.send(add)
+            self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,id))
         request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
         type, uri = urllib.splittype(droneblHost)
         host, handler = urllib.splithost(uri)
@@ -1015,7 +1018,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if not i.opered:
             i.opered = True
             irc.queueMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
-            irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bnf' % irc.nick))
+            irc.queueMsg(ircmsgs.IrcMsg('MODE %s +s +bnfl' % irc.nick))
             try:
                 # that way annouces messages are delayed, kill and kline are sent directly to the socket
                 conf.supybot.protocols.irc.throttleTime.setValue(0.0)
@@ -1348,6 +1351,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            if badmail:
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :BADMAIL ADD *@%s %s' % (email,mx)))
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FDROP %s' % nick))
+       if nick in i.tokline:
+           ident = msg.args[2]
+           hostmask = '%s!%s@%s' % (nick,ident,msg.args[3])
+           mask = self.prefixToMask(irc,hostmask)
+           if i.tokline[nick].find('#') != -1 and i.defcon:
+               channel = i.tokline[nick].split('#')[1]
+               self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'!dnsbl bots created %s' % channel)
+           del i.tokline[nick]
 
     def resolveSnoopy (self,irc,account,email,badmail):
        try:
@@ -1619,17 +1630,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
                             chan.klines.enqueue('%s %s' % (msg.nick,mask)) 
                             self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
+                            if i.defcon:
+                                i.defcon = time.time()
                         else:
-                            self.logChannel(irc,'IGNORED: [%s] %s (%s)' % (channel,msg.prefix,reason))
-                            key = 'warned-%s-%s' % (mask,channel)
-                            if not key in i.queues:
-                                i.queues[key] = time.time()
-                                def rwu():
-                                    i = self.getIrc(irc)
-                                    key = 'warned-%s-%s' % (mask,channel)
-                                    if key in i.queues:
-                                        del i.queues[key]
-                                schedule.addEvent(rwu,time.time()+self.registryValue('alertPeriod'))
+                            q = i.getIrcQueueFor(irc,mask,'warned-%s' % channel,self.registryValue('alertPeriod'))
+                            if len(q) == 0:
+                                q.enqueue(text)
+                                self.logChannel(irc,'IGNORED: [%s] %s (%s)' % (channel,msg.prefix,reason))
                                 if msg.nick:
                                     irc.queueMsg(ircmsgs.notice(msg.nick,"Your actions in %s tripped automated anti-spam measures, but were ignored based on your time in channel; stop now, or automated action will still be taken. If you have any questions, please don't hesitate to contact a member of staff" % channel))
 
@@ -1638,6 +1645,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
                         chan.klines.enqueue('%s %s' % (msg.nick,mask))
                         self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
+                        if i.defcon:
+                            i.defcon = time.time()
                         ip = mask.split('@')[1]
                         if hilight and i.defcon and utils.net.isIPV4(ip):
                             if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
@@ -1715,7 +1724,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         a = text.split('klinechan_check_join(): klining ')[1].split(' ')                                                                                                                                                                                 
                         a = a[0]                                                                                                                                                
                         ip = a.split('@')[1]
-                        self.log.debug('%s found klinechan' % ip)
                         if utils.net.isIPV4(ip):
                             if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):                                                                                        
                                 t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
@@ -1731,6 +1739,21 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email,False))
                t.setDaemon(True)
                t.start() 
+            if text.startswith('sendemail():') and self.registryValue('registerPermit') > 0:
+               text = text.replace('sendemail():','')
+               pattern = r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
+               result = re.search(pattern,text)
+               if result:
+                   ip = result.group(0)
+                   if ip and 'type register to' in text:
+                       q = self.getIrcQueueFor(irc,ip,'register',self.registryValue('registerLife'))
+                       mail = text.split('type register to')[1]
+                       q.enqueue(mail)
+                       if len(q) > self.registryValue('registerPermit'):
+                           ms = []
+                           for m in q:
+                               m.append(m)
+                           self.logChannel(irc,'SERVICE: %s registered loads of accounts %s' % (ip,', '.join(ms)))                           
 
     def handleReportMessage (self,irc,msg):
         (targets, text) = msg.args
@@ -2176,6 +2199,35 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self.kline(irc,'%s!%s' % (nick,host),mask,self.registryValue('klineDuration'),'nick changes abuses %s/%ss' % (limit,life))
             self.logChannel(irc,"BAD: %s abuses nick change (%s) -> %s" % (mask,','.join(nicks),mask))
             
+    def handleRandom (self,irc,text):
+        text = text.replace(' is creating new channel ','')
+        if self.registryValue('channelCreationPermit') < 0:
+            return
+        user = text.split('#')[0]
+        channel = text.split('#')[1]
+        m = r'[a-zA-Z+](\d{3})$'
+        result = re.search(m,user)
+        i = self.getIrc(irc)
+        if result:
+           q = self.getIrcQueueFor(irc,'sNoteRandom','sNoteRandom',self.registryValue('channelCreationLife'))
+           found = False
+           for t in q:
+               if user in t:
+                   found = True
+                   break
+           if not found:
+               q.enqueue(text)
+           if len(q) > self.registryValue('channelCreationPermit'):
+               msgs = []
+               for t in q:
+                   msgs.append(t)
+                   if i.defcon:
+                       n = t.split('#')[0]
+                       i.tokline[n] = t
+                       irc.queueMsg(ircmsgs.IrcMsg('WHOIS %s' % n))
+               self.logChannel(irc,"NOTE: suspicious channel created %s" % ', '.join(msgs))
+               q.reset()
+
     def doNotice (self,irc,msg):
         (targets, text) = msg.args
         if len(targets) and targets[0] == '*':
@@ -2185,6 +2237,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 text = text.replace('*** Notice -- ','')
             if text.startswith('Possible Flooder '):
                 self.handleFloodSnote(irc,text)
+            elif text.find('is creating new channel') != -1:
+                self.handleRandom(irc,text)
             elif text.startswith('Nick change: From'):
                 self.handleNickSnote(irc,text)
             elif text.startswith('User') and text.endswith('is a possible spambot'):

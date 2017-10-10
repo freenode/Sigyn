@@ -116,6 +116,12 @@ conf.registerGlobalValue(Sigyn, 'ipv4AbusePermit',
 conf.registerGlobalValue(Sigyn, 'ipv4AbuseLife',
      registry.PositiveInteger(1, """life duration of those kline in seconds"""))
 
+# to fight some specific spambot
+conf.registerGlobalValue(Sigyn, 'channelCreationPermit',
+    registry.Integer(-1,"""-1 to disable, announce always, kline on defcon"""))
+conf.registerGlobalValue(Sigyn, 'channelCreationLife',
+     registry.PositiveInteger(60, """life of messages to keep"""))
+
 # dronebl submit
 conf.registerGlobalValue(Sigyn, 'droneblKey',
      registry.String("", """dronebl key for rpc calls""", private=True))
@@ -185,6 +191,12 @@ conf.registerGlobalValue(Sigyn, 'idPermit',
     registry.Integer(-1,"""number of snotes about id failure from a given user and different account"""))
 conf.registerGlobalValue(Sigyn, 'idLife',
     registry.PositiveInteger(1,"""life duration of message in those snote"""))
+
+conf.registerGlobalValue(Sigyn, 'registerPermit',
+    registry.Integer(-1,"""number of register allowed per ip during registerLife"""))
+conf.registerGlobalValue(Sigyn, 'registerLife',
+    registry.PositiveInteger(1,"""life of notices in seconds"""))
+
 
 #change mode on defcon
 conf.registerChannelValue(Sigyn, 'defconMode',
