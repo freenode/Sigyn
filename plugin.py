@@ -1,3 +1,4 @@
+
 #!/usr/bin/env/python
 #
 # -*- coding: utf-8 -*-
@@ -42,15 +43,7 @@ import httplib
 import threading
 import dns.resolver
 import json
-
-try:
-    from ipaddress import ip_address as IPAddress, ip_network as IPNetwork
-except ImportError:
-    try:
-        from netaddr import IPAddress, IPNetwork
-    except:
-        print('CIDR computation is not available: netaddress or ipaddress must be installed')
-
+import ipaddress
 import supybot.log as log
 import supybot.conf as conf
 import supybot.utils as utils
@@ -824,7 +817,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
           
            returns computed hostmask"""
         irc.reply(self.prefixToMask(irc,txt))
-    checkresolve = wrap(checkresolve,['owner','text'])
+    checkresolve = wrap(checkresolve,['owner','hostmask'])
 
     # internal stuff
 
@@ -872,9 +865,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     elif h.startswith('2a01:488::'):
                         h = h                  
                     if not '/' in h:
-                        a = h.split(':')
-                        if len(a) > 4:
-                            h = '%s:*' % ':'.join(a[:4])
+                        h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen
                 self.log.debug('%s is resolved as %s@%s' % (prefix,ident,h))
                 if dnsbl:
                     ip = h
@@ -959,9 +950,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 elif h.startswith('2a01:488::'):
                     h = h
                 if not '/' in h:
-                    a = h.split(':')
-                    if len(a) > 4:
-                        h = '%s:*' % ':'.join(a[:4])
+                    h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen
                 self.cache[prefix] = '%s@%s' % (ident,h)
             else:
                 i = self.getIrc(irc)
@@ -1152,6 +1141,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if pending[1] in i.klines:
                     del i.klines[pending[1]]
                 return
+            self.log.info('KLINE %s|%s' % (mask,pending[3]))
             irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (pending[2],mask,pending[4],pending[3])))
             if pending[1] in i.klines:
                 del i.klines[pending[1]]
@@ -1185,6 +1175,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if not self.registryValue('enable'):
                 self.logChannel(irc,"INFO: disabled, can't kline %s (%s)" % (mask,reason))
             else:
+                self.log.info('KLINE %s|%s' % (mask,reason))
                 irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (duration,mask,klineMessage,reason)))
                 ip = mask.split('@')[1]
                 permit = self.registryValue('ipv4AbusePermit')
@@ -1192,13 +1183,23 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     ip = ip.split('.')
                     ip[3] = '0'
                     ip = '.'.join(ip)
-                    range = IPNetwork(u'%s/24' % ip)
+                    range = ipaddress.IPv4Address(u'%s/24' % ip)
                     life = self.registryValue('ipv4AbuseLife')
-                    q = self.getIrcQueueFor(irc,'cidr-check',range.value,life)
+                    q = self.getIrcQueueFor(irc,'cidr-check',range.network,life)
                     q.enqueue(range.value)
                     if len(q) > permit:
                         q.reset()
                         self.logChannel(irc,"INFO: abuses detected in %s/24 (%s/%ss) - %s" % (ip,permit,life,reason))
+                elif utils.net.bruteIsIPV6(ip) and permit > -1:
+                    life = self.registryValue('ipv4AbuseLife')
+                    range = ipaddress.IPv6Address(u'%s/64' % ip).with_prefixlen
+                    q = self.getIrcQueueFor(irc,'cidr-check',range,life)
+                    q.enqueue(ip)
+                    if len(q) > permit:
+                        q.reset()
+                        self.logChannel(irc,"INFO: abuses detected in %s (%s/%ss) - %s" % (ip,permit,life,reason))
+                        irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (duration,'*@%s' % ip,klineMessage,reason)))
+
         def forgetKline ():
             i = self.getIrc(irc)
             if mask in i.klines:
@@ -1674,6 +1675,20 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                         if i.defcon:
                             i.defcon = time.time()
+                        if i.lastDefcon and time.time()-i.lastDefcon < self.registryValue('alertPeriod'):
+                            self.logChannel(irc,"INFO: ignores lifted and abuses end to klines for %ss due to abuses in %s after lastest defcon %s" % (self.registryValue('defcon'),channel,i.lastDefcon))
+                            if not i.god:
+                                irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
+                            else:
+                                for channel in irc.state.channels:
+                                    if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
+                                        if not 'z' in irc.state.channels[channel].modes:
+                                            if irc.nick in list(irc.state.channels[channel].ops):
+                                                irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
+                                            else:
+                                                irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
+                            i.defcon = time.time()
+
                         ip = mask.split('@')[1]
                         if hilight and i.defcon and utils.net.isIPV4(ip):
                             if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
@@ -1716,7 +1731,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     chs = list(queue)
                                     queue.reset()
                                     key = 'amsg %s' % mask
-                                    if not key in i.queues:
+                                    q = self.getIrcQueueFor(irc,key,'amsg',self.registryValue('alertPeriod'))
+                                    if len(q) == 0:
+                                        q.enqueue(mask)
                                         chs.append(channel)
                                         self.logChannel(irc,'AMSG: %s (%s) in %s' % (msg.nick,text,', '.join(chs)))
                                         for channel in i.channels:
@@ -1727,13 +1744,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                             elif chan.patterns.timeout != life:
                                                 chan.patterns.setTimeout(life)
                                             chan.patterns.enqueue(text.lower())
-                                        def rc():
-                                            i = self.getIrc(irc)
-                                            if key in i.queues:
-                                                del i.queues[key]
-                                        schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
-                                        i.queues[key] = time.time()
-
 
     def handleSecretMessage (self,irc,msg):
         (targets, text) = msg.args
@@ -2700,6 +2710,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         channel = self.registryValue('logChannel')
         i = self.getIrc(irc)
         if channel in irc.state.channels:
+            self.log.info('logChannel : %s' % message)
             msg = ircmsgs.privmsg(channel,message)
             if self.registryValue('useNotice'):
                 msg = ircmsgs.notice(channel,message)

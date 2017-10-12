@@ -1,7 +1,7 @@
 # Sigyn #
 
 A Limnoria's plugin to handle various spam and abuses with network hammer
-You must install python-dnspython.
+You must install python-dnspython and python-ipaddress
 
 You must tweak default settings to fits your needs.
 
