@@ -782,7 +782,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                           channels.append(channel)
                           if not isCloaked('%s!%s' % (nick,ip)):
                               irc.queueMsg(ircmsgs.IrcMsg('UNKLINE %s' % ip))
-                              irc.reply('Ban on %s with ip %s has been lifted' % (nick,ip))
+                              irc.reply('The ban on %s has been lifted' % nick)
                           else:  
                               irc.reply('Your request has been submitted to freenode staff.')
                ops.append(channel)
@@ -1141,8 +1141,20 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if pending[1] in i.klines:
                     del i.klines[pending[1]]
                 return
+            ## todo lookups in chan.klines and find the cloak associated with the kline and replace it
+            ## q.queue._P__slots__ probably
             self.log.info('KLINE %s|%s' % (mask,pending[3]))
             irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (pending[2],mask,pending[4],pending[3])))
+            for channel in irc.state.channels:
+                chan = self.getChan(irc,channel)
+                if len(chan.klines):
+                    index = 0
+                    for k in chan.klines:
+                       if k.startswith(nick): 
+                           (at, m) = chan.klines.queue[index]
+                           chan.klines.queue[index] = (at,'%s %s' % (nick,mask))
+                           break
+                       index = index + 1
             if pending[1] in i.klines:
                 del i.klines[pending[1]]
 
@@ -1515,7 +1527,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         self.logChannel(irc,'INFO: [%s] returns to regular state' % channel)
                         if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel) and not i.defcon:
                             if 'z' in irc.state.channels[channel].modes and irc.nick in list(irc.state.channels[channel].ops) and not 'm' in irc.state.channels[channel].modes:
-                                #irc.sendMsg(ircmsgs.IrcMsg('MODE %s -qz $~a' % channel))
                                 irc.queueMsg(ircmsgs.IrcMsg('MODE %s q' % channel))
                 if isBanned:
                     continue
@@ -1536,6 +1547,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             log = 'BAD: [%s] %s (matches #%s) -> %s' % (channel,msg.prefix,pattern.uid,mask)
                             self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                             i.count(self.getDb(irc.network),pattern.uid)
+                            chan.klines.enqueue('%s %s' % (msg.nick,mask))
                             self.isAbuseOnChannel(irc,channel,'pattern',mask)                                
                             break
                         else:
@@ -1548,6 +1560,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                                 self.rmIrcQueueFor(irc,mask)
                                 i.count(self.getDb(irc.network),pattern.uid)
+                                chan.klines.enqueue('%s %s' % (msg.nick,mask))
                                 self.isAbuseOnChannel(irc,channel,'pattern',mask)
                                 break
                             i.count(self.getDb(irc.network),pattern.uid)
