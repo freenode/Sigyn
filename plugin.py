@@ -865,7 +865,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     elif h.startswith('2a01:488::'):
                         h = h                  
                     if not '/' in h:
-                        h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen
+                        h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen.encode('utf-8')
                 self.log.debug('%s is resolved as %s@%s' % (prefix,ident,h))
                 if dnsbl:
                     ip = h
@@ -894,6 +894,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def prefixToMask (self,irc,prefix,channel='',dnsbl=False):
         if prefix in self.cache:
             return self.cache[prefix]
+        prefix = prefix
         (nick,ident,host) = ircutils.splitHostmask(prefix)
         if '/' in host:
             if host.startswith('gateway/web/freenode'):
@@ -950,7 +951,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 elif h.startswith('2a01:488::'):
                     h = h
                 if not '/' in h:
-                    h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen
+                    h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen.encode('utf-8')
                 self.cache[prefix] = '%s@%s' % (ident,h)
             else:
                 i = self.getIrc(irc)
@@ -1195,18 +1196,18 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     ip = ip.split('.')
                     ip[3] = '0'
                     ip = '.'.join(ip)
-                    range = ipaddress.IPv4Address(u'%s/24' % ip)
+                    range = ipaddress.ip_network(u'%s/24' % ip,strict=False).with_prefixlen.encode('utf-8')
                     life = self.registryValue('ipv4AbuseLife')
-                    q = self.getIrcQueueFor(irc,'cidr-check',range.network,life)
-                    q.enqueue(range.value)
+                    q = self.getIrcQueueFor(irc,'cidr-check',range,life)
+                    q.enqueue(range)
                     if len(q) > permit:
                         q.reset()
                         self.logChannel(irc,"INFO: abuses detected in %s/24 (%s/%ss) - %s" % (ip,permit,life,reason))
                 elif utils.net.bruteIsIPV6(ip) and permit > -1:
                     life = self.registryValue('ipv4AbuseLife')
-                    range = ipaddress.IPv6Address(u'%s/64' % ip).with_prefixlen
+                    range = ipaddress.IPv6Address(u'%s/64' % ip).with_prefixlen.encode('utf-8')
                     q = self.getIrcQueueFor(irc,'cidr-check',range,life)
-                    q.enqueue(ip)
+                    q.enqueue(range)
                     if len(q) > permit:
                         q.reset()
                         self.logChannel(irc,"INFO: abuses detected in %s (%s/%ss) - %s" % (ip,permit,life,reason))
@@ -1796,13 +1797,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                if result:
                    ip = result.group(0)
                    if ip and 'type register to' in text:
+                       self.log.info('sendemail found ip %s' % ip)
                        q = self.getIrcQueueFor(irc,ip,'register',self.registryValue('registerLife'))
                        mail = text.split('type register to')[1]
                        q.enqueue(mail)
                        if len(q) > self.registryValue('registerPermit'):
                            ms = []
                            for m in q:
-                               m.append(m)
+                               ms.append(m)
                            self.logChannel(irc,'SERVICE: %s registered loads of accounts %s' % (ip,', '.join(ms)))                           
 
     def handleReportMessage (self,irc,msg):
