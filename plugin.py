@@ -821,20 +821,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     # internal stuff
     
     def _ipv6_user_block (self, h):
-        if ':' in h:
-        # todo use a separate file to handle various ipv6 providers.
-        if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:') or h.startswith('2001:0:53aa:64c:'):
-            h = '%s/116' % h
-        elif h.startswith('2600:3c01'):
-            h = '%s/124' % h
-        elif h.startswith('2001:4801:'):
-            h = '%s/68' % h
-        elif h.startswith('2a02:2b88:'):
-            h = '%s/128' % h
-        elif h.startswith('2a01:488::'):
-            h = h                  
-        if not '/' in h:
-            h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen.encode('utf-8')
+        if utils.net.bruteIsIPV6(h):
+            if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:') or h.startswith('2001:0:53aa:64c:'):
+                h = '%s/116' % h
+            elif h.startswith('2600:3c01'):
+                h = '%s/124' % h
+            elif h.startswith('2001:4801:'):
+                h = '%s/68' % h
+            elif h.startswith('2a02:2b88:'):
+                h = '%s/128' % h
+            elif h.startswith('2a01:488::'):
+                h = h                  
+            elif not '/' in h:
+                h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen.encode('utf-8')
         return h
 
     def resolve (self,irc,prefix,channel='',dnsbl=False):
@@ -868,18 +867,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self.log.debug('%s resolved as %s' % (prefix,L))
             if len(L) == 1:
                 h = L[0]
-                h = self._ipv6_user_block(h)
                 self.log.debug('%s is resolved as %s@%s' % (prefix,ident,h))
-                if dnsbl:
-                    ip = h
-                    if utils.net.isIPV4(ip):
-                        if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
-                            t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
-                            t.setDaemon(True)
-                            t.start()
-                            if prefix in i.resolving:
-                                del i.resolving[prefix]
-                            return
+                if dnsbl and utils.net.isIPV4(h):
+                    if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                        t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', h),args=(irc,h,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
+                        t.setDaemon(True)
+                        t.start()
+                        if prefix in i.resolving:
+                            del i.resolving[prefix]
+                        return
                 self.cache[prefix] = '%s@%s' % (ident,h)
             else:
                 self.cache[prefix] = '%s@%s' % (ident,host)
@@ -942,9 +938,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if utils.net.isIPV4(host):
                 self.cache[prefix] = '%s@%s' % (ident,host)
             elif utils.net.bruteIsIPV6(host):
-                h = host
-                h = self._ipv6_user_block(h)
-                self.cache[prefix] = '%s@%s' % (ident,h)
+                self.cache[prefix] = '%s@%s' % (ident,host)
             else:
                 i = self.getIrc(irc)
                 if not prefix in i.resolving:
@@ -1068,27 +1062,27 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             ip = ip.split('.')                                                                                                                                                                                                       
                             ip[3] = '0'
                             ip = '.'.join(ip)
-                            range = ipaddress.ip_network(u'%s/24' % ip,strict=False).with_prefixlen.encode('utf-8')                                                                                                                                  
+                            iprange = ipaddress.ip_network(u'%s/24' % ip,strict=False).with_prefixlen.encode('utf-8')                                                                                                                                  
                             life = self.registryValue('ipv4AbuseLife')
-                            q = self.getIrcQueueFor(irc,'ban-check',range,life)
-                            q.enqueue(channel)
+                            q = self.getIrcQueueFor(irc,'ban-check',iprange,life)
+                            q.enqueue(target)
                             if len(q) > permit:
                                 msgs = []
                                 for m in q:
                                     msgs.append(m)
                                 q.reset()
-                                self.logChannel(irc,"INFO: abuses detected in %s/24 (%s/%ss) - %s" % (ip,permit,life,','.join(msgs)))
+                                self.logChannel(irc,"INFO: abuses detected in %s (%s/%ss) - %s" % (ip,permit,iprange,','.join(msgs)))
                         elif utils.net.bruteIsIPV6(ip) and permit > -1:                                                                                                                                                                              
                             life = self.registryValue('ipv4AbuseLife')                                                                                                                                                                               
-                            range = ipaddress.IPv6Address(u'%s/64' % ip).with_prefixlen.encode('utf-8').encode('utf-8')                                                                                                                                              
-                            q = self.getIrcQueueFor(irc,'cidr-check',range,life)                                                                                                                                                                     
-                            q.enqueue(range)
+                            iprange = self._ipv6_user_block(ip)                                                                                                                                         
+                            q = self.getIrcQueueFor(irc,'cidr-check',iprange,life)                                                                                                                                                                     
+                            q.enqueue(target)
                             if len(q) > permit:
                                 msgs = []
                                 for m in q:
                                     msgs.append(m)
                                 q.reset()
-                                self.logChannel(irc,"INFO: abuses detected in %s (%s/%ss) - %s" % (range,permit,life,','.join(msgs)))                                                                                                                           
+                                self.logChannel(irc,"INFO: abuses detected in %s (%s/%ss) - %s" % (iprange,permit,life,','.join(msgs)))                                                                                                                           
                     
    
     def opStaffers (self,irc):
