@@ -1,4 +1,3 @@
-
 #!/usr/bin/env/python
 #
 # -*- coding: utf-8 -*-
@@ -820,6 +819,23 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     checkresolve = wrap(checkresolve,['owner','hostmask'])
 
     # internal stuff
+    
+    def _ipv6_user_block (self, h):
+        if ':' in h:
+        # todo use a separate file to handle various ipv6 providers.
+        if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:') or h.startswith('2001:0:53aa:64c:'):
+            h = '%s/116' % h
+        elif h.startswith('2600:3c01'):
+            h = '%s/124' % h
+        elif h.startswith('2001:4801:'):
+            h = '%s/68' % h
+        elif h.startswith('2a02:2b88:'):
+            h = '%s/128' % h
+        elif h.startswith('2a01:488::'):
+            h = h                  
+        if not '/' in h:
+            h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen.encode('utf-8')
+        return h
 
     def resolve (self,irc,prefix,channel='',dnsbl=False):
         (nick,ident,host) = ircutils.splitHostmask(prefix)
@@ -852,20 +868,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self.log.debug('%s resolved as %s' % (prefix,L))
             if len(L) == 1:
                 h = L[0]
-                if ':' in h:
-                    # todo use a separate file to handle various ipv6 providers.
-                    if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:') or h.startswith('2001:0:53aa:64c:'):
-                        h = '%s/116' % h
-                    elif h.startswith('2600:3c01'):
-                        h = '%s/124' % h
-                    elif h.startswith('2001:4801:'):
-                        h = '%s/68' % h
-                    elif h.startswith('2a02:2b88:'):
-                        h = '%s/128' % h
-                    elif h.startswith('2a01:488::'):
-                        h = h                  
-                    if not '/' in h:
-                        h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen.encode('utf-8')
+                h = self._ipv6_user_block(h)
                 self.log.debug('%s is resolved as %s@%s' % (prefix,ident,h))
                 if dnsbl:
                     ip = h
@@ -940,18 +943,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.cache[prefix] = '%s@%s' % (ident,host)
             elif utils.net.bruteIsIPV6(host):
                 h = host
-                if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:') or h.startswith('2001:0:53aa:64c:'):
-                    h = '%s/116' % h
-                elif h.startswith('2600:3c01'):
-                    h = '%s/124' % h
-                elif h.startswith('2001:4801'):
-                    h = '%s/68' % h
-                elif h.startswith('2a02:2b88:'):
-                    h = '%s/128' % h
-                elif h.startswith('2a01:488::'):
-                    h = h
-                if not '/' in h:
-                    h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen.encode('utf-8')
+                h = self._ipv6_user_block(h)
                 self.cache[prefix] = '%s@%s' % (ident,h)
             else:
                 i = self.getIrc(irc)
@@ -1088,7 +1080,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 self.logChannel(irc,"INFO: abuses detected in %s/24 (%s/%ss) - %s" % (ip,permit,life,','.join(msgs)))
                         elif utils.net.bruteIsIPV6(ip) and permit > -1:                                                                                                                                                                              
                             life = self.registryValue('ipv4AbuseLife')                                                                                                                                                                               
-                            range = ipaddress.IPv6Address(u'%s/64' % ip).with_prefixlen.encode('utf-8')                                                                                                                                              
+                            range = ipaddress.IPv6Address(u'%s/64' % ip).with_prefixlen.encode('utf-8').encode('utf-8')                                                                                                                                              
                             q = self.getIrcQueueFor(irc,'cidr-check',range,life)                                                                                                                                                                     
                             q.enqueue(range)
                             if len(q) > permit:
