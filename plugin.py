@@ -820,8 +820,24 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     # internal stuff
     
-    def _ipv6_user_block (self, h):
+    def _ip_ranges (self, h):
+        if '/' in h:
+            if h.startswith('gateway/web/freenode/ip.'):
+               h = h.replace('gateway/web/freenode/ip.','')
+               return [ipaddress.ip_network(u'%s/27' % h, strict=False).with_prefixlen.encode('utf-8'),ipaddress.ip_network(u'%s/26' % h, strict=False).with_prefixlen.encode('utf-8'),ipaddress.ip_network(u'%s/25' % h, strict=False).with_prefixlen.encode('utf-8'),ipaddress.ip_network(u'%s/24' % h, strict=False).with_prefixlen.encode('utf-8')]
+            return [h]
+        if utils.net.isIPV4(h):
+            return [ipaddress.ip_network(u'%s/27' % h, strict=False).with_prefixlen.encode('utf-8'),ipaddress.ip_network(u'%s/26' % h, strict=False).with_prefixlen.encode('utf-8'),ipaddress.ip_network(u'%s/25' % h, strict=False).with_prefixlen.encode('utf-8'),ipaddress.ip_network(u'%s/24' % h, strict=False).with_prefixlen.encode('utf-8')]
         if utils.net.bruteIsIPV6(h):
+            r = []
+            r.append(ipaddress.ip_network(u'%s/120' % h, False).with_prefixlen.encode('utf-8'))
+            r.append(ipaddress.ip_network(u'%s/118' % h, False).with_prefixlen.encode('utf-8'))
+            r.append(ipaddress.ip_network(u'%s/116' % h, False).with_prefixlen.encode('utf-8'))
+            r.append(ipaddress.ip_network(u'%s/114' % h, False).with_prefixlen.encode('utf-8'))
+            r.append(ipaddress.ip_network(u'%s/112' % h, False).with_prefixlen.encode('utf-8'))
+            r.append(ipaddress.ip_network(u'%s/110' % h, False).with_prefixlen.encode('utf-8'))
+            r.append(ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen.encode('utf-8'))
+            return r
             if h.startswith('2400:6180:') or h.startswith('2604:a880:') or h.startswith('2a03:b0c0:') or h.startswith('2001:0:53aa:64c:'):
                 h = '%s/116' % h
             elif h.startswith('2600:3c01'):
@@ -832,9 +848,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 h = '%s/128' % h
             elif h.startswith('2a01:488::'):
                 h = h                  
-            elif not '/' in h:
+            else:
                 h = ipaddress.ip_network(u'%s/64' % h, False).with_prefixlen.encode('utf-8')
-        return h
+        return [h]
 
     def resolve (self,irc,prefix,channel='',dnsbl=False):
         (nick,ident,host) = ircutils.splitHostmask(prefix)
@@ -1057,32 +1073,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if ircutils.isUserHostmask(value):
                         mask = self.prefixToMask(irc,value)
                         ip = mask.split('@')[1]   
-                        permit = self.registryValue('ipv4AbusePermit')                                                                                                                                                                               
-                        if utils.net.isIPV4(ip) and permit > -1:
-                            ip = ip.split('.')                                                                                                                                                                                                       
-                            ip[3] = '0'
-                            ip = '.'.join(ip)
-                            iprange = ipaddress.ip_network(u'%s/24' % ip,strict=False).with_prefixlen.encode('utf-8')                                                                                                                                  
-                            life = self.registryValue('ipv4AbuseLife')
-                            q = self.getIrcQueueFor(irc,'ban-check',iprange,life)
-                            q.enqueue(target)
-                            if len(q) > permit:
-                                msgs = []
-                                for m in q:
-                                    msgs.append(m)
-                                q.reset()
-                                self.logChannel(irc,"INFO: abuses detected in %s (%s/%ss) - %s" % (ip,permit,iprange,','.join(msgs)))
-                        elif utils.net.bruteIsIPV6(ip) and permit > -1:                                                                                                                                                                              
-                            life = self.registryValue('ipv4AbuseLife')                                                                                                                                                                               
-                            iprange = self._ipv6_user_block(ip)                                                                                                                                         
-                            q = self.getIrcQueueFor(irc,'cidr-check',iprange,life)                                                                                                                                                                     
-                            q.enqueue(target)
-                            if len(q) > permit:
-                                msgs = []
-                                for m in q:
-                                    msgs.append(m)
-                                q.reset()
-                                self.logChannel(irc,"INFO: abuses detected in %s (%s/%ss) - %s" % (iprange,permit,life,','.join(msgs)))                                                                                                                           
+                        permit = self.registryValue('ipv4AbusePermit')
+                        if permit > -1:
+                            ipranges = self._ip_ranges(ip)
+                            for range in ipranges:
+                                q = self.getIrcQueueFor(irc,'ban-check',range,self.registryValue('ipv4AbuseLife'))
+                                q.enqueue(target)
+                                if len(q) > permit:
+                                    chs = []
+                                    for m in q:
+                                        chs.append(m)
+                                    q.reset()
+                                    self.logChannel(irc,"INFO: *@%s is collecting bans (%s/%ss) %s" % (range, permit, self.registryValue('ipv4AbuseLife'), ','.join(chs)))
+                                permit = permit + 1                                                                                                                                                                         
                     
    
     def opStaffers (self,irc):
@@ -1211,28 +1214,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             else:
                 self.log.info('KLINE %s|%s' % (mask,reason))
                 irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (duration,mask,klineMessage,reason)))
-                ip = mask.split('@')[1]
-                permit = self.registryValue('ipv4AbusePermit')
-                if utils.net.isIPV4(ip) and permit > -1:
-                    ip = ip.split('.')
-                    ip[3] = '0'
-                    ip = '.'.join(ip)
-                    range = ipaddress.ip_network(u'%s/24' % ip,strict=False).with_prefixlen.encode('utf-8')
-                    life = self.registryValue('ipv4AbuseLife')
-                    q = self.getIrcQueueFor(irc,'cidr-check',range,life)
-                    q.enqueue(range)
-                    if len(q) > permit:
-                        q.reset()
-                        self.logChannel(irc,"INFO: abuses detected in %s/24 (%s/%ss) - %s" % (ip,permit,life,reason))
-                elif utils.net.bruteIsIPV6(ip) and permit > -1:
-                    life = self.registryValue('ipv4AbuseLife')
-                    range = ipaddress.IPv6Address(u'%s/64' % ip).with_prefixlen.encode('utf-8')
-                    q = self.getIrcQueueFor(irc,'cidr-check',range,life)
-                    q.enqueue(range)
-                    if len(q) > permit:
-                        q.reset()
-                        self.logChannel(irc,"INFO: abuses detected in %s (%s/%ss) - %s" % (ip,permit,life,reason))
-                        irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (duration,'*@%s' % ip,klineMessage,reason)))
 
         def forgetKline ():
             i = self.getIrc(irc)
@@ -1818,7 +1799,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                if result:
                    ip = result.group(0)
                    if ip and 'type register to' in text:
-                       self.log.info('sendemail found ip %s' % ip)
                        q = self.getIrcQueueFor(irc,ip,'register',self.registryValue('registerLife'))
                        mail = text.split('type register to')[1]
                        q.enqueue(mail)
@@ -2208,20 +2188,21 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             t.start()
 
     def handleKline(self,irc,text):
-        if self.registryValue('alertOnWideKline') > -1:
-            i = self.getIrc(irc)
-            user = text.split('active for')[1]
-            a = user[::-1]
-            ar = a.split(']',1)
-            ar.reverse()
-            ar.pop()
-            user = "%s" % ar[0]
-            user = user.replace('[','!',1)
-            user = '%s' % user[::-1]
-            user = user.strip()
-            if not ircutils.isUserHostmask(user):
-                return
-            (nick,ident,host) = ircutils.splitHostmask(user)
+        i = self.getIrc(irc)
+        user = text.split('active for')[1]
+        a = user[::-1]
+        ar = a.split(']',1)
+        ar.reverse()
+        ar.pop()
+        user = "%s" % ar[0]
+        user = user.replace('[','!',1)
+        user = '%s' % user[::-1]
+        user = user.strip()
+        if not ircutils.isUserHostmask(user):
+            return
+        (nick,ident,host) = ircutils.splitHostmask(user)
+        permit = self.registryValue('alertOnWideKline')            
+        if permit > -1:
             if '/' in host:
                 if host.startswith('gateway/tor-sasl'):
                     self.logChannel(irc,"NOTE: %s seems klined, please freeze the account" % user)
@@ -2230,22 +2211,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     h = host.split('/')
                     h[-1] = '*'
                     host = '/'.join(h)
-            mask = '*@%s' % host
-            queue = self.getIrcQueueFor(irc,mask,'klineNote',15)
-            queue.enqueue(user)
-            key = 'wideKlineAlert'
-            if len(queue) > self.registryValue('alertOnWideKline'):
-                queue.reset()
-                if not key in i.queues[mask]:
-                    self.logChannel(irc,"NOTE: a kline similar to %s seems to hit more than %s users" % (mask,self.registryValue('alertOnWideKline')))
-                    i.queues[mask][key] = time.time()
-            def rct():
-                i = self.getIrc(irc)
-                if mask in i.queues:
-                    if key in i.queues[mask]:
-                        del i.queues[mask][key]
-                self.rmIrcQueueFor(irc,mask)
-            schedule.addEvent(rct,time.time()+8)
+            ranges = self._ip_ranges(host)
+            for range in ranges:
+                queue = self.getIrcQueueFor(irc,range,'klineNote',7)
+                queue.enqueue(user)
+                if len(queue) > permit:
+                    queue.reset()
+                    self.logChannel(irc,"NOTE: a kline similar to *@%s seems to hit more than %s users" % (range,self.registryValue('alertOnWideKline')))
 
     def handleNickSnote (self,irc,text):
         text = text.replace('Nick change: From ','')
@@ -2351,8 +2323,22 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                      if p in reason:
                          hasPattern = True
                          break
+                ip = text.split('K-Line for [*@')[1].split(']')[0]
+                permit = self.registryValue('ipv4AbusePermit')
+                if permit > -1:
+                    ranges = self._ip_ranges(ip)
+                    self.log.debug('checking %s against %s' % (ip,ranges))
+                    for range in ranges:
+                        q = self.getIrcQueueFor(irc,'klineRange',range,self.registryValue('ipv4AbuseLife'))
+                        q.enqueue(ip)
+                        if len(q) > permit:
+                            hs = []
+                            for m in q:
+                                hs.append(m)
+                                q.reset()
+                            self.logChannel(irc,"NOTE: abuses detected on %s (%s/%ss) %s" % (range,permit,self.registryValue('ipv4AbuseLife'),','.join(hs)))
+                        permit = permit + 1
                 if '!dnsbl' in text or hasPattern:
-                    ip = text.split('K-Line for [*@')[1].split(']')[0]
                     if utils.net.isIPV4(ip):
                         if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
                             t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
