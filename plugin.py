@@ -1076,6 +1076,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         permit = self.registryValue('ipv4AbusePermit')
                         if permit > -1:
                             ipranges = self._ip_ranges(ip)
+                            announced = False
                             for range in ipranges:
                                 q = self.getIrcQueueFor(irc,'ban-check',range,self.registryValue('ipv4AbuseLife'))
                                 q.enqueue(target)
@@ -1084,7 +1085,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     for m in q:
                                         chs.append(m)
                                     q.reset()
-                                    self.logChannel(irc,"INFO: *@%s is collecting bans (%s/%ss) %s" % (range, permit, self.registryValue('ipv4AbuseLife'), ','.join(chs)))
+                                    if not announced:
+                                        announced = True
+                                        self.logChannel(irc,"INFO: *@%s is collecting bans (%s/%ss) %s" % (range, permit, self.registryValue('ipv4AbuseLife'), ','.join(chs)))
                                 permit = permit + 1                                                                                                                                                                         
                     
    
@@ -1374,6 +1377,24 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i.stats = {}
         if len(r):
             self.logChannel(irc,'DOS: %s ip(s) %s' % (len(r),', '.join(r)))
+
+    def do276 (self,irc,msg):
+        patterns = self.registryValue('droneblPatterns')
+        found = False
+        nick = msg.args[1]
+        text = msg.args[2]
+        if len(patterns):
+            for pattern in patterns:
+                if len(pattern) and pattern in text:
+                    found = True
+                    break
+        #self.log.info('fingerprint %s : %s : %s' % (nick,text,found))
+        if found:
+            hostmask = irc.state.nickToHostmask(nick)
+            if ircutils.isUserHostmask(hostmask):
+                mask = self.prefixToMask(irc,hostmask)
+                log = 'BAD: [%s] %s (fingerprint matchs a droneblPatterns) -> %s' % (self.registryValue('mainChannel'),hostmask,mask)
+                self.ban(irc,nick,hostmask,mask,self.registryValue('klineDuration'),'!dnsbl fingerprint',self.registryValue('klineMessage'),log,None)
 
     def do311 (self,irc,msg):
        i = self.getIrc(irc)
@@ -1691,8 +1712,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                         if i.defcon:
                             i.defcon = time.time()
-                        if i.lastDefcon and time.time()-i.lastDefcon < self.registryValue('alertPeriod'):
-                            self.logChannel(irc,"INFO: ignores lifted and abuses end to klines for %ss due to abuses in %s after lastest defcon %s" % (self.registryValue('defcon'),channel,i.lastDefcon))
+                        if chan.called:
+                            chan.called = time.time()
+                        if i.lastDefcon and time.time()-i.lastDefcon < self.registryValue('alertPeriod') and not i.defcon:
+                            self.logChannel(irc,"INFO: ignores lifted and abuses end to klines for %ss due to abuses in %s after lastest defcon %s" % (self.registryValue('defcon')*2,channel,i.lastDefcon))
                             if not i.god:
                                 irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
                             else:
@@ -1703,7 +1726,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                                 irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
                                             else:
                                                 irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
-                            i.defcon = time.time()
+                            i.defcon = time.time() + self.registryValue('defcon')
 
                         ip = mask.split('@')[1]
                         if hilight and i.defcon and utils.net.isIPV4(ip):
@@ -2212,12 +2235,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     h[-1] = '*'
                     host = '/'.join(h)
             ranges = self._ip_ranges(host)
+            announced = False
             for range in ranges:
                 queue = self.getIrcQueueFor(irc,range,'klineNote',7)
                 queue.enqueue(user)
                 if len(queue) > permit:
                     queue.reset()
-                    self.logChannel(irc,"NOTE: a kline similar to *@%s seems to hit more than %s users" % (range,self.registryValue('alertOnWideKline')))
+                    if not announced:
+                        announced = True
+                        self.logChannel(irc,"NOTE: a kline similar to *@%s seems to hit more than %s users" % (range,self.registryValue('alertOnWideKline')))
 
     def handleNickSnote (self,irc,text):
         text = text.replace('Nick change: From ','')
@@ -2328,6 +2354,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if permit > -1:
                     ranges = self._ip_ranges(ip)
                     self.log.debug('checking %s against %s' % (ip,ranges))
+                    announced = False
                     for range in ranges:
                         q = self.getIrcQueueFor(irc,'klineRange',range,self.registryValue('ipv4AbuseLife'))
                         q.enqueue(ip)
@@ -2336,7 +2363,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             for m in q:
                                 hs.append(m)
                                 q.reset()
-                            self.logChannel(irc,"NOTE: abuses detected on %s (%s/%ss) %s" % (range,permit,self.registryValue('ipv4AbuseLife'),','.join(hs)))
+                            if not announced:
+                                announced = True
+                                self.logChannel(irc,"NOTE: abuses detected on %s (%s/%ss) %s" % (range,permit,self.registryValue('ipv4AbuseLife'),','.join(hs)))
                         permit = permit + 1
                 if '!dnsbl' in text or hasPattern:
                     if utils.net.isIPV4(ip):
@@ -2354,8 +2383,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def do215 (self,irc,msg):
         i = self.getIrc(irc)
         if msg.args[0] == irc.nick and msg.args[1] == 'I' and msg.args[2] == 'NOMATCH':
-            self.log.debug('do215 %s' % msg.args)
-
+            #self.log.debug('do215 %s' % msg.args)
+            self.log.info('DLINE SHOULD OCCURS')
 
     def handleSaslFailure (self,irc,text):
         i = self.getIrc(irc)
@@ -2382,8 +2411,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if len(hosts) > 0:
                 for h in hosts:
                     irc.queueMsg(ircmsgs.IrcMsg('TESTLINE %s' % h))
-#                    irc.sendMsg(ircmsgs.IrcMsg('DLINE %s %s on * :%s' % (duration,h,self.registryValue('saslMessage'))))
-                    self.logChannel(irc,'DLINE: %s (%s) (%s/%ss)' % (h,'SASL failures',limit,life))
+                    irc.sendMsg(ircmsgs.IrcMsg('DLINE %s %s on * :%s' % (duration,h,self.registryValue('saslMessage'))))
+                    self.logChannel(irc,'NOTE: %s (%s) (%s/%ss)' % (h,'SASL failures',limit,life))
 
     def hasAbuseOnChannel (self,irc,channel,key):
         chan = self.getChan(irc,channel)
@@ -2784,6 +2813,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 account = None
         for channel in channels:
             if ircutils.isChannel(channel) and channel in irc.state.channels:
+#                if channel == self.registryValue('mainChannel'):
+#                    irc.queueMsg(ircmsgs.IrcMsg('WHOIS %s' % msg.nick))
                 if self.registryValue('ignoreChannel',channel):
                     continue
                 chan = self.getChan(irc,channel)
