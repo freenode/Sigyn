@@ -764,7 +764,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     rmtmp = wrap(rmtmp,['op'])
 
     def unkline (self,irc,msg,args,nick):
-       """unkline <nick>
+       """<nick>
           request unkline of <nick>, klined recently from your channel
        """
        channels = []
