@@ -331,6 +331,7 @@ class Pattern (object):
         if self._match:
             return self._match.search (text) != None
         return self.pattern in text
+
     def __repr__(self):
         return '%s(uid=%r, pattern=%r, limit=%r, life=%r, _match=%r)' % (self.__class__.__name__,
         self.uid, self.pattern, self.limit, self.life, self._match)
@@ -531,7 +532,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def lspattern (self,irc,msg,args,optlist,pattern):
         """[--deep] <id|pattern>
 
-        returns patterns which matches pattern or info about pattern #id, use --deep to search on deactivated patterns"""
+        returns patterns which matches pattern or info about pattern #id, use --deep to search on deactivated patterns, * to return all pattern"""
         i = self.getIrc(irc)
         deep = False
         for (option, arg) in optlist:
@@ -1088,7 +1089,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     if not announced:
                                         announced = True
                                         self.logChannel(irc,"INFO: *@%s is collecting bans (%s/%ss) %s" % (range, permit, self.registryValue('ipv4AbuseLife'), ','.join(chs)))
-                                permit = permit + 1                                                                                                                                                                         
                     
    
     def opStaffers (self,irc):
@@ -1419,6 +1419,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            if i.tokline[nick].find('#') != -1 and i.defcon:
                channel = i.tokline[nick].split('#')[1]
                self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'!dnsbl bots created %s' % channel)
+               self.logChannel(irc,'BAD: [#%s] %s (bottish channel created) -> %s' % (channel,hostmask,mask))
            del i.tokline[nick]
 
     def resolveSnoopy (self,irc,account,email,badmail):
@@ -1975,24 +1976,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         users = list(queue)
                         if len(queue) > limit:
                             queue.reset()
-                            if not key in i.queues[target]:
-                                self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
-                                i.queues[target][key] = time.time() + self.registryValue('alertPeriod')
-                                def rc():
-                                    i = self.getIrc(irc)
-                                    if target in i.queues:
-                                        if key in i.queues[target]:
-                                            del i.queues[target][key]
-                                i.queues[target][key] = time.time()
-                                schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
-                            else:
-                                def rkc():
-                                    i = self.getIrc(irc)
-                                    if target in i.queues:
-                                        if 'kline' in i.queues[target]:
-                                            del i.queues[target]['kline']
-                                i.queues[target]['kline'] = True
-                                schedule.addEvent(rkc,time.time()+self.registryValue('alertPeriod'))
+                            self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
 #                        if 'kline' in i.queues[target]:
 #                                for u in users:
 #                                    umask = self.prefixToMask(irc,u)
@@ -2015,30 +1999,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 users = list(queue)
                 if len(queue) > limit:
                     queue.reset()
-                    key = 'snoteFloodAlerted'
-                    if not key in i.queues[target]:
-                        self.logChannel(irc,'NOTE: %s is flooded by %s' % (target,', '.join(users)))
-                        def ru():
-                            i = self.getIrc(irc)
-                            if target in i.queues:
-                                if key in i.queues[target]:
-                                    del i.queues[target][key]
-                        i.queues[target][key] = time.time()
-                        schedule.addEvent(ru,time.time()+self.registryValue('alertPeriod'))
+                    queue = self.getIrcQueueFor(irc,target,'snoteFloodLethal',self.registryValue('alertPeriod'))
+                    if len(queue) > 0:
+                        for m in queue:
+                            for q in m.split(','):
+                                mask = self.prefixToMask(irc,q)
+                                self.kline(irc,q,mask,self.registryValue('klineDuration'),'snote flood on %s' % target)
+                                self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (q,target,mask))
+                        queue.reset()
                     else:
-                        def rku():
-                            i = self.getIrc(irc)
-                            if target in i.queues:
-                                if 'kline' in i.queues[target]:
-                                    del i.queues[target]['kline']
-                        i.queues[target]['kline'] = True
-                        schedule.addEvent(rku,time.time()+self.registryValue('alertPeriod'))
-                if 'kline' in i.queues[target]:
-                        for u in users:
-                            umask = self.prefixToMask(irc,u)
-                            self.kline(irc,u,umask,self.registryValue('klineDuration'),'snote flood on %s' % target)
-                            self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (u,target,umask))
-                q = self.getIrcQueueFor(irc,'freenode','snoteFlood',life)
+                        queue.enqueue(', '.join(users))
+                        self.logChannel(irc,'NOTE: %s is flooded by %s' % (target,', '.join(users)))
+
+                q = self.getIrcQueueFor(irc,'networkwide','snoteFlood',life)
                 stored = False
                 for u in queue:
                     if u == user:
@@ -2081,15 +2054,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if len(queue) > limit and limit > 0:
             users = list(queue)
             queue.reset()
-            if not key in i.queues[target]:
-                self.logChannel(irc,'NOTE: [%s] join/part by %s' % (target,', '.join(users)))
-                def rc():
-                    i = self.getIrc(irc)
-                    if target in i.queues:
-                        if key in i.queues[target]:
-                            del i.queues[target][key]
-                i.queues[target][key] = time.time()
-                schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod'))
+            queue = self.getIrcQueueFor(irc,user,'snoteJoinAlert',self.registryValue('alertPeriod'))
+            if len(queue):
+               self.logChannel(irc,'NOTE: [%s] join/part by %s' % (target,', '.join(users)))
+            queue.enqueue(','.join(users))
         life = self.registryValue('crawlLife')
         limit = self.registryValue('crawlPermit')
         if limit < 0:
@@ -2104,27 +2072,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             queue.enqueue(target)
         if '1wm' in user:
             limit = 1
-        #self.log.debug('%s : %s : %s : %s : %s' % (user,mask,len(queue),life,limit)) 
         if len(queue) > limit:
             channels = list(queue)
-#            if not i.defcon:
             queue.reset()
-            if not key in i.queues[mask]:
+            queue = self.getIrcQueueFor(irc,mask,'snoteJoinLethal',self.registryValue('alertPeriod'))
+            if len(queue) == 0:
                 self.logChannel(irc,'NOTE: %s is crawling freenode (%s)' % (user,', '.join(channels)))
-                def rc():
-                    i = self.getIrc(irc)
-                    if mask in i.queues:
-                        if key in i.queues[mask]:
-                            del i.queues[mask][key]
-                i.queues[mask][key] = time.time()
-                schedule.addEvent(rc,time.time()+self.registryValue('alertPeriod')*2)
-        elif key in i.queues[mask]:
-           if '1wm' in user: 
-               self.kline(irc,user,mask,self.registryValue('klineDuration'),'!dnsbl crawling')
-           else:
-               self.kline(irc,user,mask,self.registryValue('klineDuration'),'crawling')
-           self.logChannel(irc,"BAD: %s (crawling) -> %s" % (user,mask))
-           del i.queues[mask][key]
+                queue.enqueue(mask)
+            else:
+                self.kline(irc,user,mask,self.registryValue('klineDuration'),'crawling')
 
     def handleIdSnote (self,irc,text):
         target = text.split('failed login attempts to ')[1].split('.')[0].strip()
@@ -2298,9 +2254,28 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                    if i.defcon:
                        n = t.split('#')[0]
                        i.tokline[n] = t
-                       irc.queueMsg(ircmsgs.IrcMsg('WHOIS %s' % n))
-               self.logChannel(irc,"NOTE: suspicious channel created %s" % ', '.join(msgs))
+                       irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s' % n))
+               if not i.defcon:
+                   self.logChannel(irc,"NOTE: suspicious channel created %s" % ', '.join(msgs))
                q.reset()
+               q = self.getIrcQueueFor(irc,'sNoteRandomAlert','sNoteRandomAlert',self.registryValue('channelCreationLife'))
+               if len(q) > 2:
+                   if not i.defcon:
+                       self.logChannel(irc,"INFO: ignores lifted and abuses end to klines for %ss due to channel creation abuses" % self.registryValue('defcon'))
+                       if not i.god:
+                           irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
+                       else:
+                           for channel in irc.state.channels:
+                               if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
+                                   if not 'z' in irc.state.channels[channel].modes:
+                                       if irc.nick in list(irc.state.channels[channel].ops):
+                                           irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
+                                       else:
+                                           irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
+                       i.defcon = time.time() + self.registryValue('defcon')
+                   q.reset()
+               q.enqueue(','.join(msgs))
+                
 
     def doNotice (self,irc,msg):
         (targets, text) = msg.args
@@ -2350,6 +2325,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                          hasPattern = True
                          break
                 ip = text.split('K-Line for [*@')[1].split(']')[0]
+                self.log.debug('%s :: %s' % (ip,reason))
                 permit = self.registryValue('ipv4AbusePermit')
                 if permit > -1:
                     ranges = self._ip_ranges(ip)
@@ -2362,9 +2338,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             hs = []
                             for m in q:
                                 hs.append(m)
-                                q.reset()
+                            q.reset()
                             if not announced:
                                 announced = True
+                                irc.sendMsg(ircmsgs.IrcMsg('KLINE %s *@%s :%s|%s' % (self.registryValue('klineDuration'),range,self.registryValue('klineMessage'),'repeat abuses on this range (%s/%ss)' % (permit,self.registryValue('ipv4AbuseLife')))))
                                 self.logChannel(irc,"NOTE: abuses detected on %s (%s/%ss) %s" % (range,permit,self.registryValue('ipv4AbuseLife'),','.join(hs)))
                         permit = permit + 1
                 if '!dnsbl' in text or hasPattern:
