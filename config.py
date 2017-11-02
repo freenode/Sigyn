@@ -106,8 +106,8 @@ conf.registerGlobalValue(Sigyn, 'saslDuration',
 conf.registerGlobalValue(Sigyn, 'saslMessage',
      registry.String("Banned due to too many failed login attempts in a short period, email kline@freenode.net when corrected. Thanks!", """dline message"""))
 
-conf.registerChannelValue(Sigyn, 'eirDuration',
-     registry.String("", """eir dnv duration"""))
+conf.registerChannelValue(Sigyn, 'lastActionTaken',
+     registry.Float(0.0, """store date of last action taken in a channel"""))
 
 conf.registerGlobalValue(Sigyn, 'announcePermit',
     registry.Integer(-1,"""number of announce permit in logChannel,if triggered the bot will stay quiet for alertPeriod, -1 to disable"""))
