@@ -1463,7 +1463,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            del i.mx[nick]
            mask = self.prefixToMask(irc,hostmask)
            self.logChannel(irc,'SERVICE: %s registered %s with *@%s is in mxbl --> %s' % (hostmask,nick,email,mask))
-           self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'register abuses (%s) !dnsbl' % email)
+           if i.defcon:
+               self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'register abuses (%s)' % email)
            if badmail:
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :BADMAIL ADD *@%s %s' % (email,mx)))
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FDROP %s' % nick))
@@ -1615,6 +1616,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if irc.nick in raw:
                         self.logChannel(irc,'OP: [%s] <%s> %s' % (channel,msg.nick,text))
                     continue
+                if self.registryValue('ignoreVoicedUser',channel=channel):
+                    if msg.nick in list(irc.state.channels[channel].voices):
+                        continue
                 protected = ircdb.makeChannelCapability(channel, 'protected')
                 if ircdb.checkCapability(msg.prefix, protected):
                     continue

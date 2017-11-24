@@ -220,6 +220,9 @@ conf.registerChannelValue(Sigyn, 'brokenHost',
 # can be per channel's settings
 conf.registerChannelValue(Sigyn, 'ignoreChannel',
      registry.Boolean(False, """ignore everything in the channel"""))
+conf.registerChannelValue(Sigyn, 'ignoreVoicedUser',
+     registry.Boolean(False, """ignore voiced users in the channel"""))
+
 conf.registerChannelValue(Sigyn, 'ignoreDuration',
      registry.Integer(-1, """in secondes: if -1 disabled, otherwise bot ignores user's privmsg/notices after <seconds> in channel"""))
 
