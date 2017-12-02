@@ -3,8 +3,8 @@
 A Limnoria plugin to handle spam and abuse on a network level.
 
 Sigyn is developed primarily for the freenode irc network. As with most of
-freenode's utility bots, Sigyn is named after a [Norse goddess]
-(https://en.wikipedia.org/wiki/Sigyn).
+freenode's utility bots, Sigyn is named after a
+[Norse goddess](https://en.wikipedia.org/wiki/Sigyn).
 
 ## Installation
 
@@ -23,8 +23,8 @@ about creating issues and opening PRs.
 
 ## Code of Conduct
 
-We enforce the [Contributor Covenant, version 1.4]
-(https://www.contributor-covenant.org/version/1/4/code-of-conduct.html), which
-can be summed up as: Be respectful to everyone, and act in a constructive,
+We enforce the
+[Contributor Covenant, version 1.4](https://www.contributor-covenant.org/version/1/4/code-of-conduct.html),
+which can be summed up as: Be respectful to everyone, and act in a constructive,
 professional manner towards everyone. If you feel someone is violating the Code
 of Conduct, please PM me (emerson) on IRC, or email me at emerson@freenode.net.
