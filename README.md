@@ -17,10 +17,9 @@ and commands, as well as a work-in-progress configuration manual.
 
 ## Support and Development
 
-[![#freenode-sigyn](https://kiwiirc.com/buttons/chat.freenode.net/freenode-sigyn.png)]
-(https://kiwiirc.com/client/chat.freenode.net/#freenode-sigyn) is where all the
-support and development happens. See CONTRIBUTING.md for rules about creating
-issues and opening PRs.
+[![#freenode-sigyn](https://kiwiirc.com/buttons/chat.freenode.net/freenode-sigyn.png)](https://kiwiirc.com/client/chat.freenode.net/#freenode-sigyn)
+is where all the support and development happens. See CONTRIBUTING.md for rules
+about creating issues and opening PRs.
 
 ## Code of Conduct
 
