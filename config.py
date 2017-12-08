@@ -189,7 +189,6 @@ conf.registerGlobalValue(Sigyn, 'crawlLife',
     registry.PositiveInteger(1,"""life of notices in seconds"""))
 
 # NickServ ID failures
-
 conf.registerGlobalValue(Sigyn, 'idPermit',
     registry.Integer(-1,"""number of snotes about id failure from a given user and different account"""))
 conf.registerGlobalValue(Sigyn, 'idLife',
@@ -200,8 +199,7 @@ conf.registerGlobalValue(Sigyn, 'registerPermit',
 conf.registerGlobalValue(Sigyn, 'registerLife',
     registry.PositiveInteger(1,"""life of notices in seconds"""))
 
-
-#change mode on defcon
+# change modes on defcon
 conf.registerChannelValue(Sigyn, 'defconMode',
     registry.Boolean(False,"""changes +qz $~a -qz $~a on defcon"""))
 
@@ -217,12 +215,11 @@ conf.registerChannelValue(Sigyn, 'brokenReason',
 conf.registerChannelValue(Sigyn, 'brokenHost',
     registry.CommaSeparatedListOfStrings([''], """list of knowns broken host"""))
 
-# can be per channel's settings
+# ignores feature
 conf.registerChannelValue(Sigyn, 'ignoreChannel',
      registry.Boolean(False, """ignore everything in the channel"""))
 conf.registerChannelValue(Sigyn, 'ignoreVoicedUser',
      registry.Boolean(False, """ignore voiced users in the channel"""))
-
 conf.registerChannelValue(Sigyn, 'ignoreDuration',
      registry.Integer(-1, """in secondes: if -1 disabled, otherwise bot ignores user's privmsg/notices after <seconds> in channel"""))
 
@@ -241,14 +238,36 @@ conf.registerChannelValue(Sigyn, 'bypassIgnoreLife',
     registry.PositiveInteger(1,"""in seconds"""))
 
 # channel protections
+conf.registerChannelValue(Sigyn, 'clearTmpPatternOnUnkline',
+     registry.Boolean(False, """clean channel's temporary patterns on unkline requested by channel's op"""))
+
 conf.registerChannelValue(Sigyn, 'massJoinPermit',
-    registry.Integer(-1,"""number of similar nicks allowed during massJoinLife, -1 to disable"""))
+    registry.Integer(-1,"""number of joins allowed during massJoinLife, -1 to disable"""))
 conf.registerChannelValue(Sigyn, 'massJoinLife',
-    registry.PositiveInteger(1,"""life duration of message in the massJoindetection"""))
+    registry.PositiveInteger(1,"""life duration of messages in the massJoin detection"""))
+
+conf.registerChannelValue(Sigyn, 'massJoinNickPermit',
+    registry.Integer(-1,"""number of smiliar nick joins allowed during massJoinNickLife, -1 to disable"""))
+conf.registerChannelValue(Sigyn, 'massJoinNickLife',
+    registry.PositiveInteger(1,"""life duration of messages in the massJoinNick detection"""))
+
+conf.registerChannelValue(Sigyn, 'massJoinHostPermit',
+    registry.Integer(-1,"""number of smiliar host joins allowed during massJoinHostLife, -1 to disable"""))
+conf.registerChannelValue(Sigyn, 'massJoinHostLife',
+    registry.PositiveInteger(1,"""life duration of messages in the massJoinHost detection"""))
+
+conf.registerChannelValue(Sigyn, 'massJoinGecosPermit',
+    registry.Integer(-1,"""number of smiliar gecos joins allowed during massJoinGecosLife, -1 to disable"""))
+conf.registerChannelValue(Sigyn, 'massJoinGecosLife',
+    registry.PositiveInteger(1,"""life duration of messages in the massJoinGecos detection"""))
+
 conf.registerChannelValue(Sigyn, 'massJoinPercent',
-    registry.Probability(1.00,"""percent of similarity between two nicks who joined a channel during massJoinLife"""))
+    registry.Probability(1.00,"""percent of similarity between two pattern ( for nicks and gecos )"""))
 conf.registerChannelValue(Sigyn, 'massJoinMinimum',
-    registry.PositiveInteger(1,"""length of nick to match as least"""))
+    registry.PositiveInteger(1,"""length of pattern to match as least"""))
+    
+conf.registerChannelValue(Sigyn, 'massJoinTakeAction',
+     registry.Boolean(False, """takes actions against massJoin found hosts/gecos/nicks"""))
 
 conf.registerChannelValue(Sigyn, 'floodPermit',
     registry.Integer(-1,"""number of messages allowed during floodLife, -1 to disable"""))
@@ -298,7 +317,6 @@ conf.registerChannelValue(Sigyn, 'computedPatternLife',
 conf.registerChannelValue(Sigyn, 'shareComputedPatternID',
     registry.Integer(-1,"""share the temporary pattern created to all channels with the same number, -1 to disable"""))
 
-
 conf.registerChannelValue(Sigyn, 'lowMassRepeatPermit',
     registry.Integer(-1,"""number of mass repeat permit duration massRepeatLife, -1 to disable"""))
 conf.registerChannelValue(Sigyn, 'lowMassRepeatLife',
@@ -330,7 +348,12 @@ conf.registerChannelValue(Sigyn, 'cycleLife',
 conf.registerChannelValue(Sigyn, 'ctcpPermit',
     registry.Integer(-1,"""number of channel's ctcp allowed"""))
 conf.registerChannelValue(Sigyn, 'ctcpLife',
-    registry.PositiveInteger(1,"""life duration ofchannel's ctcp buffer detection"""))
+    registry.PositiveInteger(1,"""life duration of channel's ctcp buffer detection"""))
+
+conf.registerChannelValue(Sigyn, 'noticePermit',
+    registry.Integer(-1,"""number of channel's notice allowed"""))
+conf.registerChannelValue(Sigyn, 'noticeLife',
+    registry.PositiveInteger(1,"""life duration of channel's notice buffer detection"""))
 
 conf.registerChannelValue(Sigyn, 'nickPermit',
     registry.Integer(-1,"""number of nick change allowed during cycleLife"""))
