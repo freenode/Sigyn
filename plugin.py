@@ -367,10 +367,16 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.getIrc(irc)
         self.log.debug('init() called')
         self.addDnsblQueue = []
+        self.pendingAddDnsbl = False
         self.rmDnsblQueue = []
+        self.pendingRmDnsbl = False
 
-    def removeDnsbl (self,irc,ip,droneblHost,droneblKey,force=False):
+    def removeDnsbl (self,irc,ip,droneblHost,droneblKey):
         def check(answer):
+            self.pendingRmDnsbl = False
+            if len(self.rmDnsblQueue) > 0:
+                item = self.rmDnsblQueue.pop()
+                self.removeDnsbl(item[0],item[1],item[2],item[3])
             if answer.find('listed="1"') != -1:
                 if answer.find('type="18"') != -1:
                     return
@@ -386,10 +392,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             connection.endheaders()
             connection.send(add)
             self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,id))
-            if len(self.rmDnsblQueue) > 0:
-                item = self.rmDnsblQueue.pop()
-                self.removeDnsbl(item[0],item[1],item[2],item[3],True)
-        if len(self.rmDnsblQueue) == 0 or force:
+        if len(self.rmDnsblQueue) == 0 and not self.pendingRmDnsbl:
             request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
             type, uri = urllib.splittype(droneblHost)
             host, handler = urllib.splithost(uri)
@@ -399,6 +402,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             connection.putheader("Content-Length", str(int(len(request))))
             connection.endheaders()
             connection.send(request)
+            self.pendingRmDnsbl = True
             try:
                 check(connection.getresponse().read())
             except:
@@ -406,8 +410,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         else:
             self.rmDnsblQueue.append([irc, ip, droneblHost, droneblKey])
 
-    def fillDnsbl (self,irc,ip,droneblHost,droneblKey,force=False):
+    def fillDnsbl (self,irc,ip,droneblHost,droneblKey):
         def check(answer):
+            self.pendingAddDnsbl = False
+            if len(self.addDnsblQueue) > 0:
+                item = self.addDnsblQueue.pop()
+                self.fillDnsbl(item[0],item[1],item[2],item[3])
             if 'listed="1"' in answer:
                 return
             add = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><add ip='"+ip+"' type='3' comment='used by irc spam bot' /></request>"
@@ -420,10 +428,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             connection.endheaders()
             connection.send(add)
             self.logChannel(irc,'DNSBL: %s' % ip)
-            if len(self.addDnsblQueue) > 0:
-                item = self.addDnsblQueue.pop()
-                self.fillDnsbl(item[0],item[1],item[2],item[3],True)
-        if len(self.addDnsblQueue) == 0 or force:
+        if len(self.addDnsblQueue) == 0 or not self.pendingAddDnsbl:
+            self.pendingAddDnsbl = True
             request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
             type, uri = urllib.splittype(droneblHost)
             host, handler = urllib.splithost(uri)
@@ -1035,6 +1041,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if ident.startswith('~'):
                 ident = '*'
             return '%s@%s' % (ident,host)
+
+    def do401 (self,irc,msg):
+        self.log.debug('handled unknown nick/channel')
 
     def do352 (self,irc,msg):
         channel = msg.args[0]
@@ -2085,7 +2094,26 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     else:
                         queue.enqueue(','.join(users))
                         self.logChannel(irc,'NOTE: %s is flooded by %s' % (target,', '.join(users)))
-
+                # someone is flooding nicks
+                queue = self.getIrcQueueFor(irc,user,'snoteFlood',life)
+                stored = False
+                for u in queue:
+                    if u == target:
+                        stored = True
+                        break
+                if not stored:
+                    queue.enqueue(target)
+                if len(queue) > limit:
+                    targets = list(queue)
+                    queue.reset()
+                    queue = self.getIrcQueueFor(irc,user,'snoteFloodLethal',self.registryValue('alertPeriod'))
+                    if len(queue) > 0:
+                        mask = self.prefixToMask(irc,user)
+                        self.kline(irc,user,mask,self.registryValue('klineDuration'),'snote flood %s' % (','.join(targets)))
+                        self.logChannel(irc,"BAD: %s (snote flood %s) -> %s" % (user,','.join(targets),mask))
+                    else:
+                        queue.enqueue(target)
+                        self.logChannel(irc,'NOTE: %s is flooding %s' % (user,', '.join(targets)))
 
     def handleJoinSnote (self,irc,text):
         limit = self.registryValue('joinRatePermit')
@@ -2287,15 +2315,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self.kline(irc,'%s!%s' % (nick,host),mask,self.registryValue('klineDuration'),'nick changes abuses %s/%ss' % (limit,life))
             self.logChannel(irc,"BAD: %s abuses nick change (%s) -> %s" % (mask,','.join(nicks),mask))
 
-    def handleRandom (self,irc,text):
+    def handleChannelCreation (self,irc,text):
         text = text.replace(' is creating new channel ','')
         permit = self.registryValue('channelCreationPermit')
         user = text.split('#')[0]
         channel = text.split('#')[1]
         i = self.getIrc(irc)
-        if 'isaqueen' in channel:
-            i.tokline[user] = text
-            irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s' % user))
+        for pattern in self.registryValue('lethalChannels'):
+            if channel in pattern:
+                i.tokline[user] = text
+                irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s' % user))
+                break
         if permit < 0:
             return
         if not i.defcon:
@@ -2322,7 +2352,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if text.startswith('Possible Flooder '):
                 self.handleFloodSnote(irc,text)
             elif text.find('is creating new channel') != -1:
-                self.handleRandom(irc,text)
+                self.handleChannelCreation(irc,text)
             elif text.startswith('Nick change: From'):
                 self.handleNickSnote(irc,text)
             elif text.startswith('User') and text.endswith('is a possible spambot'):

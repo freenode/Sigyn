@@ -124,6 +124,8 @@ conf.registerGlobalValue(Sigyn, 'channelCreationPermit',
     registry.Integer(-1,"""-1 to disable, announce always, kline on defcon"""))
 conf.registerGlobalValue(Sigyn, 'channelCreationLife',
      registry.PositiveInteger(60, """life of messages to keep"""))
+conf.registerGlobalValue(Sigyn, 'lethalChannels',
+    registry.CommaSeparatedListOfStrings([''],"""patterns to match"""))
 
 # dronebl submit
 conf.registerGlobalValue(Sigyn, 'droneblKey',
