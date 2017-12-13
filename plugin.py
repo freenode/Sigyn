@@ -544,6 +544,23 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         irc.replySuccess()
     vacuum = wrap(vacuum,['owner'])
 
+    def isprotected (self,irc,msg,args,hostmask,channel):
+        """<hostmask> [<channel>]
+        
+        returns true if <hostmask> is protected, in optional <channel>"""
+        if ircdb.checkCapability(hostmask, 'protected'):
+            irc.reply('%s is globaly protected' % hostmask)
+        else:
+            if channel:
+                protected = ircdb.makeChannelCapability(channel, 'protected')
+                if ircdb.checkCapability(hostmask, protected):
+                    irc.reply('%s is protected in %s' % (hostmask,channel))
+                else:
+                    irc.reply('%s is not protected in %s' % (hostmask,channel))
+            else:
+                irc.reply('%s is not protected' % hostmask);
+    isprotected = wrap(defcon,['owner','hostmask',optional('channel')])
+
     def checkactions (self,irc,msg,args,duration):
         """<duration> in days                                                                                                                                                                                                                                  
                                                                                                                                                                                                                                              
@@ -581,12 +598,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def checkpattern (self,irc,msg,args,text):
         """ <text>
-            test the text against permanent patterns """
+        
+        returns permanents patterns triggered by <text>"""
         i = self.getIrc(irc)
         patterns = []
         for k in i.patterns:
             pattern = i.patterns[k]
-            #self.log.debug('checking %s with %s :: %s :: %s' % (pattern.uid,text,pattern.match(text),pattern.pattern))
             if pattern.match(text):
                 patterns.append('#%s' % pattern.uid)
         if len(patterns):
@@ -1447,11 +1464,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if i.stats[k] > self.registryValue('ghostPermit'):
                 r.append(k.replace('[unknown@','').replace(']',''))
         for ip in r:
+            # no iline check here, too evil to keep them
             irc.sendMsg(ircmsgs.IrcMsg('DLINE %s %s on * :%s' % (1440,ip,'Banned due to too many connections in a short period, email kline@freenode.net when corrected.')))
         i.stats = {}
         if len(r):
             self.logChannel(irc,'DOS: %s ip(s) %s' % (len(r),', '.join(r)))
-
+    
     #def do276 (self,irc,msg):
         #patterns = self.registryValue('droneblPatterns')
         #found = False
@@ -2245,7 +2263,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 mask = self.prefixToMask(irc,u)
                 (nick,ident,host) = ircutils.splitHostmask(u)
                 if not mask in i.klines:
-                    #self.kill(irc,nick,u)
+                    self.kill(irc,nick,u)
                     self.kline(irc,u,mask,self.registryValue('klineDuration'),'ns id flood on %s' % target)
                     self.logChannel(irc,"BAD: %s (ns id flood on %s) -> %s" % (u,target,mask))
                     if i.defcon and utils.net.isIPV4(mask.split('@')[1]):
@@ -2302,8 +2320,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if limit < 0:
             return
         mask = self.prefixToMask(irc,'%s!%s' % (nick,host))
-        #self.kline(irc,u,umask,self.registryValue('klineDuration'),'snote flood on %s' % target)
-        #self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (u,target,umask))
         i = self.getIrc(irc)
         if not i.defcon:
             return
@@ -2321,11 +2337,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         user = text.split('#')[0]
         channel = text.split('#')[1]
         i = self.getIrc(irc)
-        for pattern in self.registryValue('lethalChannels'):
-            if channel in pattern:
-                i.tokline[user] = text
-                irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s' % user))
-                break
+        if len(self.registryValue('lethalChannels')):
+            for pattern in self.registryValue('lethalChannels'):
+                if len(pattern) and channel in pattern:
+                    i.tokline[user] = text
+                    irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s' % user))
+                    break
         if permit < 0:
             return
         if not i.defcon:
@@ -2393,7 +2410,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 permit = self.registryValue('ipv4AbusePermit')
                 if permit > -1:
                     ranges = self._ip_ranges(ip)
-                    #self.log.info('checking %s against %s' % (ip,ranges))
                     for range in ranges:
                         q = self.getIrcQueueFor(irc,'klineRange',range,self.registryValue('ipv4AbuseLife'))
                         q.enqueue(ip)
@@ -2421,8 +2437,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def do215 (self,irc,msg):
         i = self.getIrc(irc)
         if msg.args[0] == irc.nick and msg.args[1] == 'I' and msg.args[2] == 'NOMATCH':
-            # because the information requested is lost here, it's not possible to properly testline before dline, until we use a pool of requests.
-            self.log.info('DLINE SHOULD OCCURS')
+            if len(i.dlines):
+                irc.sendMsg(ircmsgs.IrcMsg('DLINE %s %s on * :%s' % (self.registryValue('saslDuration'),i.dlines.pop(0),self.registryValue('saslMessage'))))
+            if len(i.dlines):
+                irc.queueMsg(ircmsgs.IrcMsg('TESTLINE %s' % i.dlines[0]))
 
     def handleSaslFailure (self,irc,text):
         i = self.getIrc(irc)
@@ -2445,11 +2463,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             q.reset()
             hosts[host] = host
         if self.registryValue('enable'):
-            duration = self.registryValue('saslDuration')
             if len(hosts) > 0:
                 for h in hosts:
-                    #irc.queueMsg(ircmsgs.IrcMsg('TESTLINE %s' % h))
-                    irc.sendMsg(ircmsgs.IrcMsg('DLINE %s %s on * :%s' % (duration,h,self.registryValue('saslMessage'))))
+                    if len(i.dlines):
+                        i.dlines.append(h)
+                    else:
+                        i.dlines.append(h)
+                        irc.queueMsg(ircmsgs.IrcMsg('TESTLINE %s' % h))
                     self.logChannel(irc,'NOTE: %s (%s) (%s/%ss)' % (h,'SASL failures',limit,life))
 
     def hasAbuseOnChannel (self,irc,channel,key):
@@ -2607,9 +2627,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         limit = self.registryValue('%sPermit' % kind,channel=channel)
         if limit < 0:
             return False
-        if low:
-            if len(text) < self.registryValue('%sMinimum' % kind,channel=channel):
-                return False
+        if len(text) < self.registryValue('%sMinimum' % kind,channel=channel):
+            return False
         chan = self.getChan(irc,channel)
         life = self.registryValue('%sLife'  % kind,channel=channel)
         trigger = self.registryValue('%sPercent' % kind,channel=channel)
@@ -2630,6 +2649,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         if flag and not i.netsplit:
             if kind in chan.buffers and key in chan.buffers[kind]:
+                # we start to try to create pattern if user hits around 2/3 of his buffer
                 if len(chan.buffers[kind][key])/(limit * 1.0) > 0.55:
                     enough = True
         if enough:
@@ -2639,7 +2659,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             elif chan.patterns.timeout != life:
                 chan.patterns.setTimeout(life)
             if self.registryValue('computedPattern',channel=channel) > -1 and len(text) > self.registryValue('computedPattern',channel=channel):
-                repeats = list(repetitions(text))
+                repeats = []
+                if low:
+                    pat = ''
+                    for m in logs:
+                        if compareString(m,text) > trigger:
+                            p = largestString(m,text)
+                            if len(p) > self.registryValue('computedPattern',channel=channel):
+                                if len(p) > len(pat):
+                                    pat = p
+                    if len(pat):
+                        repeats = [(pat,1)]
+                else:
+                    repeats = list(repetitions(text))
                 candidate = ''
                 patterns = {}
                 for repeat in repeats:
@@ -2652,9 +2684,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if len(p) > self.registryValue('computedPattern',channel=channel):
                         if len(p) > len(candidate):
                             candidate = p
-                    elif len(p) > self.registryValue('computedPattern',channel=channel) and patterns[p] > self.registryValue('%sCount' % kind,channel=channel):
-                        if len(p) > len(candidate):
-                            candidate = p
                     elif len(p) * c > self.registryValue('computedPattern',channel=channel):
                         tentative = p * c
                         if not tentative in text:
@@ -2665,6 +2694,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             tentative = tentative[:self.registryValue('computedPattern',channel=channel)]
                         if len(tentative) > len(candidate):
                             candidate = tentative
+                    elif patterns[p] > self.registryValue('%sCount' % kind,channel=channel):
+                        if len(p) > len(candidate):
+                            candidate = p
                 if len(candidate):
                     found = False
                     for p in chan.patterns:
@@ -2681,7 +2713,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 ch = i.channels[chan]
                                 life = self.registryValue('computedPatternLife',channel=chan)
                                 if shareID != self.registryValue('shareComputedPatternID',channel=chan):
-                                    self.log.debug('%s (%s) :: %s (%s)' % (channel,shareID,chan,self.registryValue('shareComputedPatternID',channel=chan)))
                                     continue
                                 if not ch.patterns:
                                     ch.patterns = utils.structures.TimeoutQueue(life)
@@ -2756,27 +2787,32 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             break
                     if not found:
                         pattern = pattern.strip()
-# avoid klining users who may be "ignored"
-#                        users = {}
-#                        users[mask] = True
-#                        for u in chan.logs:
-#                            user = 'n!%s' % u
-#                            if not u in users and ircutils.isUserHostmask(user):
-#                                for m in chan.logs[u]:
-#                                    if pattern in m:
-#                                        prefix = u
-#                                        if isCloaked(user):
-#                                            nick = None
-#                                            for n in chan.nicks:
-#                                                if chan.nicks[n][2] == u:
-#                                                    nick = n
-#                                                    break
-#                                            if nick:
-#                                                prefix = '%s!%s' % (nick,u)
-#                                        self.kline(irc,prefix,u,self.registryValue('klineDuration'),'pattern creation in %s (%s)' % (channel,kind))
-#                                        self.logChannel(irc,"BAD: [%s] %s (pattern creation - %s)" % (channel,u,kind))
-#                                        break
-#                            users[u] = True
+                        users = {}
+                        users[mask] = True
+                        for u in chan.logs:
+                            user = 'n!%s' % u
+                            if not u in users and ircutils.isUserHostmask(user):
+                                for m in chan.logs[u]:
+                                    if pattern in m:
+                                        prefix = u
+                                        if isCloaked(user):
+                                            nick = None
+                                            for n in chan.nicks:
+                                                if chan.nicks[n][2] == u:
+                                                    nick = n
+                                                    break
+                                            if nick:
+                                                prefix = '%s!%s' % (nick,u)
+                                         # not 100% accurate protection, but still better than nothing
+                                         if ircdb.checkCapability(prefix, 'protected'):
+                                             break
+                                         protected = ircdb.makeChannelCapability(channel, 'protected')
+                                         if ircdb.checkCapability(prefix, protected):
+                                             break
+                                        self.kline(irc,prefix,u,self.registryValue('klineDuration'),'pattern creation in %s (%s)' % (channel,kind))
+                                        self.logChannel(irc,"BAD: [%s] %s (pattern creation - %s)" % (channel,u,kind))
+                                        break
+                            users[u] = True
                         shareID = self.registryValue('shareComputedPatternID',channel=channel)
                         if shareID != -1:
                             nb = 0
