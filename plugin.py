@@ -2804,11 +2804,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                             if nick:
                                                 prefix = '%s!%s' % (nick,u)
                                          # not 100% accurate protection, but still better than nothing
-                                         if ircdb.checkCapability(prefix, 'protected'):
-                                             break
-                                         protected = ircdb.makeChannelCapability(channel, 'protected')
-                                         if ircdb.checkCapability(prefix, protected):
-                                             break
+                                        if ircdb.checkCapability(prefix,'protected'):
+                                            break
+                                        protected = ircdb.makeChannelCapability(channel,'protected')
+                                        if ircdb.checkCapability(prefix,protected):
+                                            break
                                         self.kline(irc,prefix,u,self.registryValue('klineDuration'),'pattern creation in %s (%s)' % (channel,kind))
                                         self.logChannel(irc,"BAD: [%s] %s (pattern creation - %s)" % (channel,u,kind))
                                         break
