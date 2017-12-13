@@ -1512,6 +1512,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            mask = self.prefixToMask(irc,hostmask)
            if i.tokline[nick].find('#') != -1 and i.defcon:
                channel = i.tokline[nick].split('#')[1]
+               if '##' in i.tokline[nick]:
+                   channel = i.tokline[nick].split('##')[1]
                self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'!dnsbl bots created #%s' % channel)
                self.logChannel(irc,'BAD: [#%s] %s (bottish channel created) -> %s' % (channel,hostmask,mask))
            del i.tokline[nick]
@@ -2336,6 +2338,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         permit = self.registryValue('channelCreationPermit')
         user = text.split('#')[0]
         channel = text.split('#')[1]
+        if '##' in text:
+            channel = text.split('##')[1]
         i = self.getIrc(irc)
         if len(self.registryValue('lethalChannels')):
             for pattern in self.registryValue('lethalChannels'):
@@ -2803,7 +2807,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                                     break
                                             if nick:
                                                 prefix = '%s!%s' % (nick,u)
-                                         # not 100% accurate protection, but still better than nothing
+                                        # not 100% accurate protection, but still better than nothing
+                                        # no support for ignored user, ops, voiced etc ...
                                         if ircdb.checkCapability(prefix,'protected'):
                                             break
                                         protected = ircdb.makeChannelCapability(channel,'protected')
