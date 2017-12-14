@@ -61,6 +61,9 @@ conf.registerGlobalValue(Sigyn, 'snoopChannel',
 conf.registerGlobalValue(Sigyn, 'mxbl',
      registry.CommaSeparatedListOfStrings([''],"""patterns to match"""))
 
+conf.registerGlobalValue(Sigyn, 'wordsList',
+     registry.CommaSeparatedListOfStrings([''],"""paths of files contains one word per line"""))
+
 conf.registerGlobalValue(Sigyn, 'logChannel',
      registry.String("", """channel where bot's actions is announced"""))
 conf.registerGlobalValue(Sigyn, 'useNotice',
