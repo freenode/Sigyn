@@ -2369,7 +2369,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if not found:
             q.enqueue(channel)
         if len(q) == 2:
-            if user.replace('_','') in self.words:
+            if len(user) > 3 and user.rstrip('_') in self.words:
                 #self.logChannel(irc,"NOTE: %s (wordList) created channels (%s)" % (user,', '.join(list(q))))
                 i.tokline[user] = text
                 irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s' % user))
@@ -2921,7 +2921,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     t = t - self.registryValue('ignoreDuration',channel=channel) - 1
                 chan.nicks[msg.nick] = [t,msg.prefix,mask,gecos,account]
                 if i.defcon and channel == self.registryValue('mainChannel'):
-                    if msg.nick.replace('_','') in self.words and not isCloaked(msg.prefix) and not account:
+                    if len(msg.nick) > 3 and msg.nick.rstrip('_') in self.words and not isCloaked(msg.prefix) and not account:
                         self.logChannel(irc,'BAD: [%s] %s (badword) -> %s' % (channel,msg.prefix,mask))
                         self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'nick in badwords in %s' % channel)
                         continue
