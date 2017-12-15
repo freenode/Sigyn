@@ -143,7 +143,7 @@ addConverter('getPatternAndMatcher', getPatternAndMatcher)
 
 class Ircd (object):
 
-    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx','tokline','dlines')
+    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx','tokline','toklineresults','dlines')
 
     def __init__(self,irc):
         self.irc = irc
@@ -179,6 +179,7 @@ class Ircd (object):
         self.god = False
         self.mx = {}
         self.tokline = {}
+        self.toklineresults = {}
         self.dlines = []
 
     def __repr__(self):
@@ -371,6 +372,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.rmDnsblQueue = []
         self.pendingRmDnsbl = False
         self.words = []
+        self.channelCreationPattern = re.compile(r"[a-z]{5,8}")
         if len(self.registryValue('wordsList')):
             for item in self.registryValue('wordsList'):
                 try:
@@ -380,6 +382,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             self.words.append(line.strip())                    
                 except:
                     continue
+
     def removeDnsbl (self,irc,ip,droneblHost,droneblKey):
         def check(answer):
             self.pendingRmDnsbl = False
@@ -1317,6 +1320,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             else:
                 self.log.info('KLINE %s|%s' % (mask,reason))
                 irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (duration,mask,klineMessage,reason)))
+                if i.defcon:
+                    i.defcon = time.time()
 
         def forgetKline ():
             i = self.getIrc(irc)
@@ -1515,17 +1520,49 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            if badmail:
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :BADMAIL ADD *@%s %s' % (email,mx)))
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FDROP %s' % nick))
+       elif nick in i.tokline:
+          if not nick in i.toklineresults:
+              i.toklineresults[nick] = {}
+          ident = msg.args[2]
+          hostmask = '%s!%s@%s' % (nick,ident,msg.args[3])
+          mask = self.prefixToMask(irc,hostmask)
+          i.toklineresults[nick]['hostmask'] = hostmask
+          i.toklineresults[nick]['mask'] = mask
+    
+    def do317 (self,irc,msg):
+       i = self.getIrc(irc)
+       nick = msg.args[1]
        if nick in i.tokline:
-           ident = msg.args[2]
-           hostmask = '%s!%s@%s' % (nick,ident,msg.args[3])
-           mask = self.prefixToMask(irc,hostmask)
-           if i.tokline[nick].find('#') != -1 and i.defcon:
-               channel = i.tokline[nick].split('#')[1]
-               if '##' in i.tokline[nick]:
-                   channel = i.tokline[nick].split('##')[1]
-               self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'bots created #%s' % channel)
-               self.logChannel(irc,'BAD: [#%s] %s (bottish channel created) -> %s' % (channel,hostmask,mask))
+           if not nick in i.toklineresults:
+               i.toklineresults[nick] = {}
+           i.toklineresults[nick]['signon'] = float(msg.args[3])
+
+    def do330 (self,irc,msg):
+       i = self.getIrc(irc)
+       nick = msg.args[1]
+       if nick in i.tokline:
+           if not nick in i.toklineresults:
+               i.toklineresults[nick] = {}
+           i.toklineresults[nick]['account'] = True
+
+    def do318 (self,irc,msg):
+       i = self.getIrc(irc)
+       nick = msg.args[1]
+       if nick in i.tokline and nick in i.toklineresults:
+           if not 'account' in i.toklineresults[nick]:
+               if 'signon' in i.toklineresults[nick]:
+                   if time.time() - i.toklineresults[nick]['signon'] < self.registryValue('alertPeriod'):
+                       if i.tokline[nick].find('#') != -1:
+                           channel = '#%s' % i.tokline[nick].split('#')[1]
+                           if '##' in i.tokline[nick]:
+                               channel = '##%s' % i.tokline[nick].split('##')[1]
+                           if i.defcon:
+                               self.kline(irc,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask'],self.registryValue('klineDuration'),'bottish channel created %s' % channel)
+                               self.logChannel(irc,'BAD: [#%s] %s (bottish channel created) -> %s' % (channel,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask']))
+                           else:
+                               self.logChannel(irc,'NOTE: [#%s] %s (bottish channel created) -> %s' % (channel,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask']))
            del i.tokline[nick]
+           del i.toklineresults[nick]
 
     def resolveSnoopy (self,irc,account,email,badmail):
        try:
@@ -2354,11 +2391,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             for pattern in self.registryValue('lethalChannels'):
                 if len(pattern) and channel in pattern:
                     i.tokline[user] = text
-                    irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s' % user))
+                    irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s %s' % (user,user)))
                     break
         if permit < 0:
-            return
-        if not i.defcon:
             return
         q = self.getIrcQueueFor(irc,user,'channel-created',self.registryValue('channelCreationLife'))
         found = False
@@ -2369,10 +2404,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if not found:
             q.enqueue(channel)
         if len(q) == 2:
-            if len(user) > 3 and user.rstrip('_') in self.words:
+            if len(user) > 2 and user.rstrip('_') in self.words:
                 #self.logChannel(irc,"NOTE: %s (wordList) created channels (%s)" % (user,', '.join(list(q))))
-                i.tokline[user] = text
-                irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s' % user))
+                if self.channelCreationPattern.match(channel):
+                    i.tokline[user] = text
+                    irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s %s' % (user,user)))
         if len(q) > permit:
             self.logChannel(irc,"NOTE: %s created channels (%s)" % (user,', '.join(list(q))))
             q.reset()
