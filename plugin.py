@@ -1526,9 +1526,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
           ident = msg.args[2]
           hostmask = '%s!%s@%s' % (nick,ident,msg.args[3])
           mask = self.prefixToMask(irc,hostmask)
+          gecos = msg.args[5]
           i.toklineresults[nick]['hostmask'] = hostmask
           i.toklineresults[nick]['mask'] = mask
-    
+          i.toklineresults[nick]['gecos'] = gecos
+              
     def do317 (self,irc,msg):
        i = self.getIrc(irc)
        nick = msg.args[1]
@@ -1551,16 +1553,21 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
        if nick in i.tokline and nick in i.toklineresults:
            if not 'account' in i.toklineresults[nick]:
                if 'signon' in i.toklineresults[nick]:
-                   if time.time() - i.toklineresults[nick]['signon'] < self.registryValue('alertPeriod'):
+                   found = False
+                   for n in self.words:
+                       if n in i.toklineresults[nick]['gecos']:
+                           found = True
+                           break
+                   if time.time() - i.toklineresults[nick]['signon'] < self.registryValue('alertPeriod') and found and not 'gateway/' in i.toklineresults[nick]['hostmask'] and not isCloaked(i.toklineresults[nick]['hostmask']):
                        if i.tokline[nick].find('#') != -1:
                            channel = '#%s' % i.tokline[nick].split('#')[1]
                            if '##' in i.tokline[nick]:
                                channel = '##%s' % i.tokline[nick].split('##')[1]
                            if i.defcon:
                                self.kline(irc,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask'],self.registryValue('klineDuration'),'bottish channel created %s' % channel)
-                               self.logChannel(irc,'BAD: [#%s] %s (bottish channel created) -> %s' % (channel,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask']))
+                               self.logChannel(irc,'BAD: [%s] %s (bottish channel created) -> %s' % (channel,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask']))
                            else:
-                               self.logChannel(irc,'NOTE: [#%s] %s (bottish channel created) -> %s' % (channel,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask']))
+                               self.logChannel(irc,'NOTE: [%s] %s (bottish channel created) -> %s' % (channel,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask']))
            del i.tokline[nick]
            del i.toklineresults[nick]
 
@@ -1750,7 +1757,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if time.time()-ts > ignoreDuration:
                         isIgnored = True
                 reason = ''
-                if chan.patterns:
+                hilight = False
+                flag = ircdb.makeChannelCapability(channel, 'hilight')
+                if ircdb.checkCapability(msg.prefix, flag):
+                    hilight = self.isChannelHilight(irc,msg,channel,mask,text)
+                    if hilight and self.hasAbuseOnChannel(irc,channel,'hilight'):
+                        isIgnored = False
+                    if hilight:
+                         reason = hilight
+                if chan.patterns and not len(reason):
                     for pattern in chan.patterns:
                         if pattern in text:
                             reason = 'matches tmp pattern in %s' % channel
@@ -1781,12 +1796,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if ircdb.checkCapability(msg.prefix, flag):
                     lowrepeat = self.isChannelLowRepeat(irc,msg,channel,mask,text)
                     if lowrepeat and self.hasAbuseOnChannel(irc,channel,'lowRepeat'):
-                        isIgnored = False
-                hilight = False
-                flag = ircdb.makeChannelCapability(channel, 'hilight')
-                if ircdb.checkCapability(msg.prefix, flag):
-                    hilight = self.isChannelHilight(irc,msg,channel,mask,text)
-                    if hilight and self.hasAbuseOnChannel(irc,channel,'hilight'):
                         isIgnored = False
                 lowhilight = False
                 flag = ircdb.makeChannelCapability(channel, 'lowHilight')
@@ -2404,7 +2413,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if not found:
             q.enqueue(channel)
         if len(q) == 2:
-            if len(user) > 2 and user.rstrip('_') in self.words:
+            found = False
+            for n in self.words:
+                if n in user:
+                    found = True
+                    break
+            if len(user) > 2 and found:
                 #self.logChannel(irc,"NOTE: %s (wordList) created channels (%s)" % (user,', '.join(list(q))))
                 if self.channelCreationPattern.match(channel):
                     i.tokline[user] = text
@@ -2956,8 +2970,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if isCloaked(msg.prefix):
                     t = t - self.registryValue('ignoreDuration',channel=channel) - 1
                 chan.nicks[msg.nick] = [t,msg.prefix,mask,gecos,account]
-                if i.defcon and channel == self.registryValue('mainChannel'):
-                    if len(msg.nick) > 3 and msg.nick.rstrip('_') in self.words and not isCloaked(msg.prefix) and not account:
+                if i.defcon and self.registryValue('mainChannel') in channel:
+                    found = False
+                    for n in self.words:
+                        if n in msg.nick and n in gecos:
+                           found = True
+                    if len(msg.nick) > 3 and found and not isCloaked(msg.prefix) and not 'gateway/' in msg.prefix and not account:
                         self.logChannel(irc,'BAD: [%s] %s (badword) -> %s' % (channel,msg.prefix,mask))
                         self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'nick in badwords in %s' % channel)
                         continue
