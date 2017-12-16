@@ -408,7 +408,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
             type, uri = urllib.splittype(droneblHost)
             host, handler = urllib.splithost(uri)
-            connection = httplib.HTTPConnection(host,80,timeout=20)
+            connection = httplib.HTTPConnection(host,80,timeout=40)
             connection.putrequest("POST",handler)
             connection.putheader("Content-Type", "text/xml")
             connection.putheader("Content-Length", str(int(len(request))))
@@ -445,7 +445,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
             type, uri = urllib.splittype(droneblHost)
             host, handler = urllib.splithost(uri)
-            connection = httplib.HTTPConnection(host,80,timeout=20)
+            connection = httplib.HTTPConnection(host,80,timeout=40)
             connection.putrequest("POST",handler)
             connection.putheader("Content-Type", "text/xml")
             connection.putheader("Content-Length", str(int(len(request))))
@@ -2977,8 +2977,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                            found = True
                            break
                     if len(msg.nick) > 3 and found and not isCloaked(msg.prefix) and not 'gateway/' in msg.prefix and not account:
-                        self.logChannel(irc,'BAD: [%s] %s (badword) -> %s' % (channel,msg.prefix,mask))
+                        self.kill(irc,msg.nick,msg.prefix)
                         self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'nick in badwords in %s' % channel)
+                        self.logChannel(irc,'BAD: [%s] %s (badword) -> %s' % (channel,msg.prefix,mask))
+                        self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
+                        del chan.nicks[msg.nick]
                         continue
                 if i.netsplit:
                     continue
