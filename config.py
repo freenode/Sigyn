@@ -63,6 +63,8 @@ conf.registerGlobalValue(Sigyn, 'mxbl',
 
 conf.registerGlobalValue(Sigyn, 'wordsList',
      registry.CommaSeparatedListOfStrings([''],"""paths of files contains one word per line"""))
+conf.registerGlobalValue(Sigyn, 'wordMinimum',
+    registry.PositiveInteger(4,"""minimum length of words to use for detection"""))
 
 conf.registerGlobalValue(Sigyn, 'logChannel',
      registry.String("", """channel where bot's actions is announced"""))

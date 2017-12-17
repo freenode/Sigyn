@@ -143,7 +143,7 @@ addConverter('getPatternAndMatcher', getPatternAndMatcher)
 
 class Ircd (object):
 
-    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx','tokline','toklineresults','dlines')
+    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx','tokline','toklineresults','dlines','tolethal')
 
     def __init__(self,irc):
         self.irc = irc
@@ -181,7 +181,7 @@ class Ircd (object):
         self.tokline = {}
         self.toklineresults = {}
         self.dlines = []
-
+        self.tolethal = []
     def __repr__(self):
         return '%s(patterns=%r, queues=%r, channels=%r, pending=%r, logs=%r, limits=%r, whowas=%r, klines=%r)' % (self.__class__.__name__,
         self.patterns, self.queues, self.channels, self.pending, self.logs, self.limits, self.whowas, self.klines)
@@ -581,7 +581,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         duration = duration * 24 * 3600
         for channel in irc.state.channels:
             if irc.isChannel(channel):
-                if channel == self.registryValue('mainChannel') or channel == self.registryValue('reportChannel') or self.registryValue('snoopChannel') == channel or self.registryValue('secretChannel') == channel:
+                if self.registryValue('mainChannel') in channel or channel == self.registryValue('reportChannel') or self.registryValue('snoopChannel') == channel or self.registryValue('secretChannel') == channel:
                     continue
                 if self.registryValue('ignoreChannel',channel):
                     continue
@@ -1530,7 +1530,21 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
           i.toklineresults[nick]['hostmask'] = hostmask
           i.toklineresults[nick]['mask'] = mask
           i.toklineresults[nick]['gecos'] = gecos
-              
+       elif nick in i.tolethal:
+          ident = msg.args[2]
+          hostmask = '%s!%s@%s' % (nick,ident,msg.args[3])
+          mask = self.prefixToMask(irc,hostmask)
+          if not isCloaked('hostmask') and not 'gateway/' in hostmask:
+              channel = '#' + i.tolethal[nick].split('#')[1]
+              if '##' in i.tolethal[nick]:
+                  channel = '##' + i.tolethal[nick].split('##')[1]
+              if i.defcon:
+                  self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'lethalChannel created %s' % channel)
+                  self.logChannel(irc,'BAD: [%s] %s (lethal channel) --> %s' % (channel,hostmask,mask))
+              else:
+                  self.logChannel(irc,'NOTE: [%s] %s (lethal channel) --> %s' % (channel,hostmask,mask))
+          del i.tolethal[nick]            
+
     def do317 (self,irc,msg):
        i = self.getIrc(irc)
        nick = msg.args[1]
@@ -1555,8 +1569,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                if 'signon' in i.toklineresults[nick]:
                    found = False
                    for n in self.words:
-                       if len(n) > 3 and n in i.toklineresults[nick]['gecos']:
-                           found = True
+                       if len(n) > self.registryValue('wordMinimum') and n in i.toklineresults[nick]['gecos']:
+                           found = n
                            break
                    if time.time() - i.toklineresults[nick]['signon'] < self.registryValue('alertPeriod') and found and not 'gateway/' in i.toklineresults[nick]['hostmask'] and not isCloaked(i.toklineresults[nick]['hostmask']):
                        if i.tokline[nick].find('#') != -1:
@@ -1564,10 +1578,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                            if '##' in i.tokline[nick]:
                                channel = '##%s' % i.tokline[nick].split('##')[1]
                            if i.defcon:
-                               self.kline(irc,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask'],self.registryValue('klineDuration'),'bottish channel created %s' % channel)
-                               self.logChannel(irc,'BAD: [%s] %s (bottish channel created) -> %s' % (channel,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask']))
+                               self.kline(irc,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask'],self.registryValue('klineDuration'),'bottish channel created %s - %s' % (channel,found))
+                               self.logChannel(irc,'BAD: [%s] %s (bottish channel created - %s) -> %s' % (channel,i.toklineresults[nick]['hostmask'],found,i.toklineresults[nick]['mask']))
                            else:
-                               self.logChannel(irc,'NOTE: [%s] %s (bottish channel created) -> %s' % (channel,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask']))
+                               self.logChannel(irc,'NOTE: [%s] %s (bottish channel created - %s) -> %s' % (channel,i.toklineresults[nick]['hostmask'],found,i.toklineresults[nick]['mask']))
            del i.tokline[nick]
            del i.toklineresults[nick]
 
@@ -2399,7 +2413,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if len(self.registryValue('lethalChannels')):
             for pattern in self.registryValue('lethalChannels'):
                 if len(pattern) and channel in pattern:
-                    i.tokline[user] = text
+                    i.tolethal[user] = text
                     irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s %s' % (user,user)))
                     break
         if permit < 0:
@@ -2415,10 +2429,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if len(q) == 2:
             found = False
             for n in self.words:
-                if len(n) > 3 and n in user:
+                if len(n) > 4 and n in user:
                     found = True
                     break
-            if len(user) > 2 and found:
+            if len(user) > 4 and found:
                 #self.logChannel(irc,"NOTE: %s (wordList) created channels (%s)" % (user,', '.join(list(q))))
                 if self.channelCreationPattern.match(channel):
                     i.tokline[user] = text
@@ -2740,7 +2754,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         repeats = [(pat,1)]
                 else:
                     repeats = list(repetitions(text))
-                self.log.info('for %s: %s' % (text,','.join(repeats)))
                 candidate = ''
                 patterns = {}
                 for repeat in repeats:
@@ -2973,13 +2986,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if i.defcon and self.registryValue('mainChannel') in channel:
                     found = False
                     for n in self.words:
-                        if len(n) > 3 and n in msg.nick and n in gecos:
-                           found = True
+                        if len(n) > self.registryValue('wordMinimum') and n in msg.nick and n in gecos:
+                           found = n
                            break
-                    if len(msg.nick) > 3 and found and not isCloaked(msg.prefix) and not 'gateway/' in msg.prefix and not account:
-                        self.kill(irc,msg.nick,msg.prefix)
-                        self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'nick in badwords in %s' % channel)
-                        self.logChannel(irc,'BAD: [%s] %s (badword) -> %s' % (channel,msg.prefix,mask))
+                    if len(msg.nick) > self.registryValue('wordMinimum') and found and not isCloaked(msg.prefix) and not 'gateway/' in msg.prefix and not account:
+                        self.kill(irc,msg.nick,self.registryValue('killMessage',channel=channel))
+                        self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'badwords in %s - %s' % (channel,found))
+                        self.logChannel(irc,'BAD: [%s] %s (badword %s) -> %s' % (channel,found,msg.prefix,mask))
                         self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                         del chan.nicks[msg.nick]
                         continue
