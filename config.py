@@ -113,6 +113,8 @@ conf.registerGlobalValue(Sigyn, 'saslMessage',
 
 conf.registerChannelValue(Sigyn, 'lastActionTaken',
      registry.Float(0.0, """store date of last action taken in a channel"""))
+conf.registerChannelValue(Sigyn, 'leaveChannelIfNoActivity',
+     registry.Integer(-1, """leave channel after days of inactivity, -1 to disable"""))
 
 conf.registerGlobalValue(Sigyn, 'announcePermit',
     registry.Integer(-1,"""number of announce permit in logChannel,if triggered the bot will stay quiet for alertPeriod, -1 to disable"""))

@@ -143,7 +143,7 @@ addConverter('getPatternAndMatcher', getPatternAndMatcher)
 
 class Ircd (object):
 
-    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx','tokline','toklineresults','dlines','tolethal')
+    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx','tokline','toklineresults','dlines')
 
     def __init__(self,irc):
         self.irc = irc
@@ -181,7 +181,7 @@ class Ircd (object):
         self.tokline = {}
         self.toklineresults = {}
         self.dlines = []
-        self.tolethal = []
+
     def __repr__(self):
         return '%s(patterns=%r, queues=%r, channels=%r, pending=%r, logs=%r, limits=%r, whowas=%r, klines=%r)' % (self.__class__.__name__,
         self.patterns, self.queues, self.channels, self.pending, self.logs, self.limits, self.whowas, self.klines)
@@ -1398,6 +1398,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def cleanup (self,irc):
         i = self.getIrc(irc)
+        partReason = 'Leaving the channel (no spam or action taken for %s days.) /invite %s %s again if needed'
+        for channel in irc.state.channels:
+            if not channel in self.registryValue('mainChannel') and not channel == self.registryValue('snoopChannel') and not channel == self.registryValue('logChannel') and not channel == self.registryValue('reportChannel') and not channel == self.registryValue('secretChannel'):
+                if self.registryValue('lastActionTaken',channel=channel) > 0.0 and self.registryValue('leaveChannelIfNoActivity',channel=channel) > -1:
+                    if time.time() - self.registryValue('lastActionTaken',channel=channel) > (self.registryValue('leaveChannelIfNoActivity',channel=channel) * 24 * 3600):
+                       irc.queueMsg(ircmsgs.part(channel, partReason % (self.registryValue('leaveChannelIfNoActivity',channel=channel),irc.nick,channel)))
+                       self.setRegistryValue('lastActionTaken',0.0,channel=channel)
+                       self.logChannel(irc,'PART: [%s] due to inactivity for %s days' % (channel,self.registryValue('leaveChannelIfNoActivity',channel=channel)))
         kinds = []
         for kind in i.queues:
             count = 0
@@ -1530,20 +1538,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
           i.toklineresults[nick]['hostmask'] = hostmask
           i.toklineresults[nick]['mask'] = mask
           i.toklineresults[nick]['gecos'] = gecos
-       elif nick in i.tolethal:
-          ident = msg.args[2]
-          hostmask = '%s!%s@%s' % (nick,ident,msg.args[3])
-          mask = self.prefixToMask(irc,hostmask)
-          if not isCloaked('hostmask') and not 'gateway/' in hostmask:
-              channel = '#' + i.tolethal[nick].split('#')[1]
-              if '##' in i.tolethal[nick]:
-                  channel = '##' + i.tolethal[nick].split('##')[1]
-              if i.defcon:
-                  self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'lethalChannel created %s' % channel)
-                  self.logChannel(irc,'BAD: [%s] %s (lethal channel) --> %s' % (channel,hostmask,mask))
-              else:
-                  self.logChannel(irc,'NOTE: [%s] %s (lethal channel) --> %s' % (channel,hostmask,mask))
-          del i.tolethal[nick]            
 
     def do317 (self,irc,msg):
        i = self.getIrc(irc)
@@ -1569,7 +1563,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                if 'signon' in i.toklineresults[nick]:
                    found = False
                    for n in self.words:
-                       if len(n) > self.registryValue('wordMinimum') and n in i.toklineresults[nick]['gecos']:
+                       if len(n) > self.registryValue('wordMinimum') and i.toklineresults[nick]['gecos'].startswith(n):
                            found = n
                            break
                    if time.time() - i.toklineresults[nick]['signon'] < self.registryValue('alertPeriod') and found and not 'gateway/' in i.toklineresults[nick]['hostmask'] and not isCloaked(i.toklineresults[nick]['hostmask']):
@@ -1584,6 +1578,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                self.logChannel(irc,'NOTE: [%s] %s (bottish channel created - %s) -> %s' % (channel,i.toklineresults[nick]['hostmask'],found,i.toklineresults[nick]['mask']))
            del i.tokline[nick]
            del i.toklineresults[nick]
+
+    def doInvite(self, irc, msg):
+       channel = msg.args[1]
+       if channel and not channel in irc.state.channels:
+           self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
 
     def resolveSnoopy (self,irc,account,email,badmail):
        try:
@@ -1661,6 +1660,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if ircmsgs.isAction(msg):
             text = ircmsgs.unAction(msg)
         raw = ircutils.stripColor(text)
+        raw = unicode(raw, 'utf-8')
         text = text.lower()
         mask = self.prefixToMask(irc,msg.prefix)
         i = self.getIrc(irc)
@@ -2410,12 +2410,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if '##' in text:
             channel = text.split('##')[1]
         i = self.getIrc(irc)
-        if len(self.registryValue('lethalChannels')):
-            for pattern in self.registryValue('lethalChannels'):
-                if len(pattern) and channel in pattern:
-                    i.tolethal[user] = text
-                    irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s %s' % (user,user)))
-                    break
+        if i.defcon:
+            if len(self.registryValue('lethalChannels')) > 0:
+                for pattern in self.registryValue('lethalChannels'):
+                    if len(pattern) and pattern in channel:
+                        self.logChannel(irc,"NOTE: %s created %s" % (user,channel))
+                        break
         if permit < 0:
             return
         q = self.getIrcQueueFor(irc,user,'channel-created',self.registryValue('channelCreationLife'))
@@ -2986,7 +2986,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if i.defcon and self.registryValue('mainChannel') in channel:
                     found = False
                     for n in self.words:
-                        if len(n) > self.registryValue('wordMinimum') and n in msg.nick and n in gecos:
+                        if len(n) > self.registryValue('wordMinimum') and msg.nick.startswith(n) and gecos.startswith(n):
                            found = n
                            break
                     if len(msg.nick) > self.registryValue('wordMinimum') and found and not isCloaked(msg.prefix) and not 'gateway/' in msg.prefix and not account:
