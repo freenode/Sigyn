@@ -1555,7 +1555,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                if 'signon' in i.toklineresults[nick]:
                    found = False
                    for n in self.words:
-                       if len(n) > 3 and n in i.toklineresults[nick]['gecos']:
+                       if len(n) > 3 and i.toklineresults[nick]['gecos'].startswith(n):
                            found = True
                            break
                    if time.time() - i.toklineresults[nick]['signon'] < self.registryValue('alertPeriod') and found and not 'gateway/' in i.toklineresults[nick]['hostmask'] and not isCloaked(i.toklineresults[nick]['hostmask']):
