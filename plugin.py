@@ -1404,7 +1404,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if self.registryValue('lastActionTaken',channel=channel) > 0.0 and self.registryValue('leaveChannelIfNoActivity',channel=channel) > -1:
                     if time.time() - self.registryValue('lastActionTaken',channel=channel) > (self.registryValue('leaveChannelIfNoActivity',channel=channel) * 24 * 3600):
                        irc.queueMsg(ircmsgs.part(channel, partReason % (self.registryValue('leaveChannelIfNoActivity',channel=channel),irc.nick,channel)))
-                       self.setRegistryValue('lastActionTaken',0.0,channel=channel)
+                       self.setRegistryValue('lastActionTaken',1.0,channel=channel)
                        self.logChannel(irc,'PART: [%s] due to inactivity for %s days' % (channel,self.registryValue('leaveChannelIfNoActivity',channel=channel)))
         kinds = []
         for kind in i.queues:
@@ -1583,7 +1583,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
        channel = msg.args[1]
        if channel and not channel in irc.state.channels:
            self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
-
+           if self.registryValue('lastActionTaken',channel=channel) == 1.0:
+               self.setRegistryValue('lastActionTaken',0.0,channel=channel)
+               irc.queueMsg(ircmsgs.join(channel))
     def resolveSnoopy (self,irc,account,email,badmail):
        try:
            resolver = dns.resolver.Resolver()
@@ -3083,6 +3085,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if msg.prefix == irc.prefix:
             for channel in channels:
                 if ircutils.isChannel(channel):
+                    self.setRegistryValue('lastActionTaken',1.0,channel=channel)
                     if channel in i.channels:
                         del i.channels[channel]
             return
