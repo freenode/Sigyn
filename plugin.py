@@ -2973,7 +2973,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if i.defcon and self.registryValue('mainChannel') in channel:
                     found = False
                     for n in self.words:
-                        if len(n) > 3 and n in msg.nick and n in gecos:
+                        if len(n) > 3 and msg.nick.startswith(n) and gecos.startswith(n):
                            found = True
                            break
                     if len(msg.nick) > 3 and found and not isCloaked(msg.prefix) and not 'gateway/' in msg.prefix and not account:
