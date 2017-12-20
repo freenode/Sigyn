@@ -1587,7 +1587,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def doInvite(self, irc, msg):
        channel = msg.args[1]
        if channel and not channel in irc.state.channels:
-           self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
            if self.registryValue('lastActionTaken',channel=channel) == 1.0:
                self.logChannel(irc,"JOIN: [%s] due to %s's invite" % (channel,msg.prefix))
                self.setRegistryValue('lastActionTaken',0.0,channel=channel)
@@ -2165,7 +2164,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         users = list(queue)
                         if len(queue) > limit:
                             self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
+                            if self.registryValue('lastActionTaken',channel=channel) == 1.0:
+                                self.logChannel(irc,"JOIN: [%s] due to flood snote" % channel)
+                                self.setRegistryValue('lastActionTaken',0.0,channel=channel)
+                                irc.queueMsg(ircmsgs.join(channel))
                             queue.reset()
+                            ## todo auto rejoin ?                                
         else:
             # nick being flood by someone
             limit = self.registryValue('userFloodPermit')
@@ -2427,7 +2431,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         i.toklineresults[user] = {}
                         i.toklineresults[user]['kind'] = 'lethal'
                         i.tokline[user] = text
-                        irc.queueMsg(ircmsgs.IrcMsg('WHOIS %s %s' % (user,user)))
+                        irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s %s' % (user,user)))
                         break
         if permit < 0:
             return
@@ -3145,6 +3149,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         if target == irc.nick:
             if channel in i.channels:
+                self.setRegistryValue('lastActionTaken',0.0,channel=channel)        
                 del i.channels[channel]
 
     def doQuit (self,irc,msg):
