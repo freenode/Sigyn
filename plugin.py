@@ -879,12 +879,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
        """
        channels = []
        ops = []
+       nick = nick.lower()
        for channel in irc.state.channels:
            if msg.nick in irc.state.channels[channel].ops:
                chan = self.getChan(irc,channel)
                if len(chan.klines):
                    for q in chan.klines:
-                       self.log.debug('%s :: %s' % (channel,q))
                        if q.startswith(nick):
                           ip = q.split(' ')[1]
                           self.logChannel(irc,'OP: [%s] %s asked for removal of %s (%s)' % (channel,msg.nick,ip,nick))
@@ -1282,7 +1282,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if len(chan.klines):
                     index = 0
                     for k in chan.klines:
-                       if k.startswith(nick):
+                       if k.startswith(nick.lower()):
                            (at, m) = chan.klines.queue[index]
                            chan.klines.queue[index] = (at,'%s %s' % (nick,mask))
                            break
@@ -1564,7 +1564,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                if not 'account' in i.toklineresults[nick] and 'signon' in i.toklineresults[nick]:
                    found = False
                    for n in self.words:
-                       if len(n) > self.registryValue('wordMinimum') and i.toklineresults[nick]['gecos'].startswith(n):
+                       if len(n) > self.registryValue('wordMinimum') and i.toklineresults[nick]['gecos'].startswith(n)  and ((len(n) - len(i.toklineresults[nick]['gecos'])) < 4):
                            found = n
                            break
                    if time.time() - i.toklineresults[nick]['signon'] < self.registryValue('alertPeriod') and found and not 'gateway/' in i.toklineresults[nick]['hostmask'] and not isCloaked(i.toklineresults[nick]['hostmask']):
@@ -1748,7 +1748,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             log = 'BAD: [%s] %s (matches #%s) -> %s' % (channel,msg.prefix,pattern.uid,mask)
                             self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                             i.count(self.getDb(irc.network),pattern.uid)
-                            chan.klines.enqueue('%s %s' % (msg.nick,mask))
+                            chan.klines.enqueue('%s %s' % (msg.nick.lower(),mask))
                             self.isAbuseOnChannel(irc,channel,'pattern',mask)
                             self.setRegistryValue('lastActionTaken',time.time(),channel=channel)                                
                             break
@@ -1762,7 +1762,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                                 self.rmIrcQueueFor(irc,mask)
                                 i.count(self.getDb(irc.network),pattern.uid)
-                                chan.klines.enqueue('%s %s' % (msg.nick,mask))
+                                chan.klines.enqueue('%s %s' % (msg.nick.lower(),mask))
                                 self.isAbuseOnChannel(irc,channel,'pattern',mask)
                                 self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                                 break
@@ -1883,7 +1883,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             isBanned = True
                             reason = '%s %s' % (reason,bypassIgnore)
                             log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
-                            chan.klines.enqueue('%s %s' % (msg.nick,mask))
+                            chan.klines.enqueue('%s %s' % (msg.nick.lower(),mask))
                             self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                             self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                             if i.defcon:
@@ -1898,7 +1898,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     else:
                         isBanned = True
                         log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
-                        chan.klines.enqueue('%s %s' % (msg.nick,mask))
+                        chan.klines.enqueue('%s %s' % (msg.nick.lower(),mask))
                         self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                         if i.defcon:
                             i.defcon = time.time()
@@ -2778,11 +2778,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     (p,c) = repeat
                     if len(p) < self.registryValue('%sMinimum' % kind, channel=channel):
                         continue
+                    p = p.strip()
                     if p in patterns:
                         patterns[p] += c
                     else:
                         patterns[p] = c
-                    p = p.strip()
                     if len(p) > self.registryValue('computedPattern',channel=channel):
                         if len(p) > len(candidate):
                             candidate = p
@@ -3004,7 +3004,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if i.defcon and self.registryValue('mainChannel') in channel:
                     found = False
                     for n in self.words:
-                        if len(n) > self.registryValue('wordMinimum') and msg.nick.startswith(n) and gecos.startswith(n):
+                        if len(n) > self.registryValue('wordMinimum') and msg.nick.startswith(n) and gecos.startswith(n) and ((len(n) - len(msg.nick)) < 4):
                            found = n
                            break
                     if len(msg.nick) > self.registryValue('wordMinimum') and found and not isCloaked(msg.prefix) and not 'gateway/' in msg.prefix and not account:
