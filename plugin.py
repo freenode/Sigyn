@@ -1588,11 +1588,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
        channel = msg.args[1]
        if channel and not channel in irc.state.channels:
            if self.registryValue('lastActionTaken',channel=channel) == 1.0:
-               self.logChannel(irc,"JOIN: [%s] due to %s's invite" % (channel,msg.prefix))
                self.setRegistryValue('lastActionTaken',0.0,channel=channel)
                irc.queueMsg(ircmsgs.join(channel))
+               self.logChannel(irc,"JOIN: [%s] due to %s's invite" % (channel,msg.prefix))
            else:
-               self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
+               i = self.getIrc(irc)
+               if i.defcon:
+                   self.setRegistryValue('lastActionTaken',0.0,channel=channel)
+                   irc.queueMsg(ircmsgs.join(channel))
+                   self.logChannel(irc,"JOIN: [%s] due to %s's invite and defcon mode" % (channel,msg.prefix))                   
+               else:
+                   self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
 
     def resolveSnoopy (self,irc,account,email,badmail):
        try:
@@ -2164,10 +2170,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         users = list(queue)
                         if len(queue) > limit:
                             self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
-                            if self.registryValue('lastActionTaken',channel=channel) == 1.0:
-                                self.logChannel(irc,"JOIN: [%s] due to flood snote" % channel)
-                                self.setRegistryValue('lastActionTaken',0.0,channel=channel)
-                                irc.queueMsg(ircmsgs.join(channel))
+                            if self.registryValue('lastActionTaken',channel=target) == 1.0:
+                                if not target in irc.state.channels:
+                                    self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
+                                    self.setRegistryValue('lastActionTaken',0.0,channel=target)
+                                    irc.queueMsg(ircmsgs.join(target))
                             queue.reset()
                             ## todo auto rejoin ?                                
         else:
