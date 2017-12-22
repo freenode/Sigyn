@@ -372,7 +372,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.rmDnsblQueue = []
         self.pendingRmDnsbl = False
         self.words = []
-        self.channelCreationPattern = re.compile(r"[a-z]{5,8}")
+        self.channelCreationPattern = re.compile(r"^[a-z]{5,8}$")
 
         if len(self.registryValue('wordsList')):
             for item in self.registryValue('wordsList'):
@@ -380,9 +380,52 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     with open(item, 'r') as content_file:
                         file = content_file.read()
                         for line in file.split('\n'):
-                            self.words.append(line.strip())                    
+                            for word in line.split(' '):
+                                w = word.strip()
+                                if len(w) > self.registryValue('wordMinimum'):
+                                    self.words.append(w)                    
                 except:
                     continue
+
+    def lswords (self,irc,msg,args,word):
+        """<word>
+
+        return if word is in list"""
+        irc.reply('%s in list ? %s' % (word,word in self.words))
+    lswords = wrap(lswords,['owner','text'])
+
+    def rmwords (self,irc,msg,args,words):
+        """<word> [<word>]
+
+        remove <word> from wordsList files"""
+        newList = []
+        for item in self.registryValue('wordsList'):
+            try:
+                f = open(item,'r')
+                wol = f.read().split('\n')
+                wnl = []
+                for line in wol:
+                    for word in line.split(' '):
+                        w = word.strip()
+                        if len(w) > self.registryValue('wordMinimum'):
+                            found = False
+                            for nw in words:
+                                if w == nw:
+                                    found = True
+                                    break
+                            if not found:
+                                wnl.append(w)
+                f.close()
+                f = open(item,'w')
+                f.write('\n'.join(wnl))
+                f.close()
+                newList = newList + wnl
+            except:
+                continue
+        oldList = len(self.words)
+        self.words = newList
+        irc.reply('words list updated: %s words before, %s words after' % (oldList,len(newList)))              
+    rmwords = wrap(rmwords,['owner',many('something')])        
 
     def removeDnsbl (self,irc,ip,droneblHost,droneblKey):
         def check(answer):
@@ -1564,7 +1607,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                if not 'account' in i.toklineresults[nick] and 'signon' in i.toklineresults[nick]:
                    found = False
                    for n in self.words:
-                       if len(n) > self.registryValue('wordMinimum') and i.toklineresults[nick]['gecos'].startswith(n)  and ((len(n) - len(i.toklineresults[nick]['gecos'])) < 4):
+                       if len(n) > self.registryValue('wordMinimum') and i.toklineresults[nick]['gecos'].startswith(n) and nick.startwitch(n):
                            found = n
                            break
                    if time.time() - i.toklineresults[nick]['signon'] < self.registryValue('alertPeriod') and found and not 'gateway/' in i.toklineresults[nick]['hostmask'] and not isCloaked(i.toklineresults[nick]['hostmask']):
@@ -1592,13 +1635,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                irc.queueMsg(ircmsgs.join(channel))
                self.logChannel(irc,"JOIN: [%s] due to %s's invite" % (channel,msg.prefix))
            else:
-               i = self.getIrc(irc)
-               if i.defcon:
-                   self.setRegistryValue('lastActionTaken',0.0,channel=channel)
-                   irc.queueMsg(ircmsgs.join(channel))
-                   self.logChannel(irc,"JOIN: [%s] due to %s's invite and defcon mode" % (channel,msg.prefix))                   
-               else:
-                   self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
+               self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
+             #  i = self.getIrc(irc)
+             #  if i.defcon:
+             #      self.setRegistryValue('lastActionTaken',0.0,channel=channel)
+             #      irc.queueMsg(ircmsgs.join(channel))
+             #      self.logChannel(irc,"JOIN: [%s] due to %s's invite and defcon mode" % (channel,msg.prefix))                   
+             #  else:
+             #      self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
 
     def resolveSnoopy (self,irc,account,email,badmail):
        try:
@@ -2069,6 +2113,25 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             else:
                 if i.netsplit and text.startswith('Join rate in '):
                     i.netsplit = time.time() + self.registryValue('netsplitDuration')
+                # using droneblpatterns on suspicious to catch specific botnet with too many FP
+                if text.startswith('Client ') and 'suspicious' in text and i.defcon:
+                    text = text.replace('Client ','')
+                    hostmask = text.split(' ')[0].replace('(','!').replace(')','')
+                    if ircutils.isUserHostmask(hostmask):
+                        mask = self.prefixToMask(irc,hostmask)
+                        (nick,ident,host) = ircutils.splitHostmask(hostmask)
+                        patterns = self.registryValue('droneblPatterns')
+                        found = False
+                        if len(patterns):
+                            for pattern in patterns:
+                                if len(pattern) and pattern in text:
+                                    found = pattern
+                                    break
+                        if found:
+                            for n in self.words:
+                                if len(n) > self.registryValue('wordMinimum') and hostmask.startswith(n):
+                                    self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'!dnsbl (%s/%s)' % (n,found))
+                                    break
                 if text.startswith('Killing client ') and 'due to lethal mask ' in text:
                     patterns = self.registryValue('droneblPatterns')
                     found = False
@@ -2178,7 +2241,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             queue.reset()
                             ## todo auto rejoin ?                                
         else:
-            # nick being flood by someone
+            # nick being flooded by someone
             limit = self.registryValue('userFloodPermit')
             life = self.registryValue('userFloodLife')
             if limit > -1:
@@ -2193,16 +2256,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 users = list(queue)
                 if len(queue) > limit:
                     queue.reset()
-                    queue = self.getIrcQueueFor(irc,target,'snoteFloodLethal',self.registryValue('alertPeriod'))
-                    if len(queue) > 0:
+                    if i.defcon:
                         for m in queue:
                             for q in m.split(','):
                                 mask = self.prefixToMask(irc,q)
                                 self.kline(irc,q,mask,self.registryValue('klineDuration'),'snote flood on %s' % target)
                                 self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (q,target,mask))
-                        queue.reset()
                     else:
-                        queue.enqueue(','.join(users))
                         self.logChannel(irc,'NOTE: %s is flooded by %s' % (target,', '.join(users)))
                 # someone is flooding nicks
                 queue = self.getIrcQueueFor(irc,user,'snoteFlood',life)
@@ -2216,13 +2276,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if len(queue) > limit:
                     targets = list(queue)
                     queue.reset()
-                    queue = self.getIrcQueueFor(irc,user,'snoteFloodLethal',self.registryValue('alertPeriod'))
-                    if len(queue) > 0:
-                        mask = self.prefixToMask(irc,user)
-                        self.kline(irc,user,mask,self.registryValue('klineDuration'),'snote flood %s' % (','.join(targets)))
-                        self.logChannel(irc,"BAD: %s (snote flood %s) -> %s" % (user,','.join(targets),mask))
+                    if i.defcon:
+                         mask = self.prefixToMask(irc,user)
+                         self.kline(irc,user,mask,self.registryValue('klineDuration'),'snote flood %s' % (','.join(targets)))
+                         self.logChannel(irc,"BAD: %s (snote flood %s) -> %s" % (user,','.join(targets),mask))
                     else:
-                        queue.enqueue(target)
                         self.logChannel(irc,'NOTE: %s is flooding %s' % (user,', '.join(targets)))
 
     def handleJoinSnote (self,irc,text):
@@ -2453,10 +2511,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if len(q) == 2 and i.defcon:
             found = False
             for n in self.words:
-                if len(n) > self.registryValue('wordMinimum') and n in user:
+                if len(n) > self.registryValue('wordMinimum') and user.startswith(n):
                     found = True
                     break
-            if len(user) > self.registryValue('wordMinimum') and found:
+            if found:
                 if self.channelCreationPattern.match(channel):
                     i.toklineresults[user] = {}
                     i.toklineresults[user]['kind'] = 'words'
