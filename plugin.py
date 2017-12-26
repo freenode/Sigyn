@@ -1450,6 +1450,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        irc.queueMsg(ircmsgs.part(channel, partReason % (self.registryValue('leaveChannelIfNoActivity',channel=channel),irc.nick,channel)))
                        self.setRegistryValue('lastActionTaken',1.0,channel=channel)
                        self.logChannel(irc,'PART: [%s] due to inactivity for %s days' % (channel,self.registryValue('leaveChannelIfNoActivity',channel=channel)))
+                       try:
+                           network = conf.supybot.networks.get(irc.network)
+                           network.channels().remove(channel)
+                       except KeyError:
+                           pass
         kinds = []
         for kind in i.queues:
             count = 0
@@ -1607,7 +1612,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                if not 'account' in i.toklineresults[nick] and 'signon' in i.toklineresults[nick]:
                    found = False
                    for n in self.words:
-                       if len(n) > self.registryValue('wordMinimum') and i.toklineresults[nick]['gecos'].startswith(n) and nick.startwitch(n):
+                       if len(n) > self.registryValue('wordMinimum') and i.toklineresults[nick]['gecos'].startswith(n) and nick.startswith(n):
                            found = n
                            break
                    if time.time() - i.toklineresults[nick]['signon'] < self.registryValue('alertPeriod') and found and not 'gateway/' in i.toklineresults[nick]['hostmask'] and not isCloaked(i.toklineresults[nick]['hostmask']):
@@ -1634,6 +1639,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                self.setRegistryValue('lastActionTaken',0.0,channel=channel)
                irc.queueMsg(ircmsgs.join(channel))
                self.logChannel(irc,"JOIN: [%s] due to %s's invite" % (channel,msg.prefix))
+               try:
+                    network = conf.supybot.networks.get(irc.network)
+                    network.channels().add(channel)
+                except KeyError:
+                    pass
+
            else:
                self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
              #  i = self.getIrc(irc)
@@ -3227,6 +3238,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if channel in i.channels:
                 self.setRegistryValue('lastActionTaken',0.0,channel=channel)        
                 del i.channels[channel]
+                try:
+                    network = conf.supybot.networks.get(irc.network)
+                    network.channels().remove(channel)
+                except KeyError:
+                    pass                
 
     def doQuit (self,irc,msg):
         if msg.prefix == irc.prefix:
