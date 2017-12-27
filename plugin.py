@@ -794,7 +794,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            remove <ips> from dronebl"""
         for ip in ips:
             if utils.net.isIPV4(ip):
-                t = world.SupyThread(target=self.removeDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
+                t = world.SupyThread(target=self.removeDnsbl,name=format('rmDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
                 t.setDaemon(True)
                 t.start()
         irc.replySuccess()
@@ -1128,6 +1128,27 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if isCloaked(prefix):
             t = t - self.registryValue('ignoreDuration',channel=channel) - 1
         chan.nicks[nick] = [t,prefix,mask,'','']
+
+    def unstaffed (self,irc,msg,args):
+        """
+
+        returns monitored channels without staffers
+        """
+        channels = []
+        for channel in irc.state.channels:
+            found = False
+            for nick in list(irc.state.channels[channel].users):
+                try:
+                    hostmask = irc.state.nickToHostmask(nick)
+                    if ircutils.isUserHostmask(hostmask) and 'freenode/staff' in hostmask:
+                        found = True
+                        break
+                except:
+                    continue
+            if not found:
+                channels.append(channel)
+        irc.reply('%s channels : %s' %(len(channels),', '.join(channels)))
+    unstaffed = wrap(unstaffed,['owner'])
 
     def do315 (self,irc,msg):
         channel = msg.args[1]
@@ -1619,7 +1640,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        channel = '#%s' % i.tokline[nick].split('#')[1]
                        if '##' in i.tokline[nick]:
                            channel = '##%s' % i.tokline[nick].split('##')[1]
-                       self.kline(irc,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask'],self.registryValue('klineDuration'),'bottish creation %s - %s !dnsbl' % (channel,found))
+                       self.kline(irc,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask'],self.registryValue('klineDuration'),'bottish creation %s - %s' % (channel,found))
                        self.logChannel(irc,'BAD: [%s] %s (bottish creation - %s) -> %s' % (channel,i.toklineresults[nick]['hostmask'],found,i.toklineresults[nick]['mask']))
            elif i.toklineresults[nick]['kind'] == 'lethal':
                if not 'account' in i.toklineresults[nick] and 'signon' in i.toklineresults[nick]:
@@ -1642,7 +1663,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                try:
                     network = conf.supybot.networks.get(irc.network)
                     network.channels().add(channel)
-                except KeyError:
+               except KeyError:
                     pass
 
            else:
@@ -2244,7 +2265,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         users = list(queue)
                         if len(queue) > limit:
                             self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
-                            if self.registryValue('lastActionTaken',channel=target) == 1.0:
+                            if self.registryValue('lastActionTaken',channel=target) == 1.0 and i.defcon:
                                 if not target in irc.state.channels:
                                     self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
                                     self.setRegistryValue('lastActionTaken',0.0,channel=target)
@@ -3091,12 +3112,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if i.defcon and self.registryValue('mainChannel') in channel:
                     found = False
                     for n in self.words:
-                        if len(n) > self.registryValue('wordMinimum') and msg.nick.startswith(n) and gecos.startswith(n) and ((len(n) - len(msg.nick)) < 4):
+                        if len(n) > self.registryValue('wordMinimum') and msg.nick.startswith(n) and gecos.startswith(n) and ((len(msg.nick) - len(n)) < 4):
                            found = n
                            break
                     if len(msg.nick) > self.registryValue('wordMinimum') and found and not isCloaked(msg.prefix) and not 'gateway/' in msg.prefix and not account:
                         self.kill(irc,msg.nick,self.registryValue('killMessage',channel=channel))
-                        self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'badwords in %s - %s !dnsbl' % (channel,found))
+                        self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'badwords in %s - %s' % (channel,found))
                         self.logChannel(irc,'BAD: [%s] %s (badword %s) -> %s' % (channel,found,msg.prefix,mask))
                         self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                         del chan.nicks[msg.nick]
