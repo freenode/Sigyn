@@ -2270,6 +2270,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
                                     self.setRegistryValue('lastActionTaken',0.0,channel=target)
                                     irc.queueMsg(ircmsgs.join(target))
+                                    try:
+                                        network = conf.supybot.networks.get(irc.network)
+                                        network.channels().add(target)
+                                    except KeyError:
+                                        pass
                             queue.reset()
                             ## todo auto rejoin ?                                
         else:
