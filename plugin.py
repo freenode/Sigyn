@@ -1065,13 +1065,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     self.cache[prefix] = '%s@gateway/web/freenode/*' % ident
             elif host.startswith('gateway/tor-sasl'):
                 self.cache[prefix] = '*@%s' % host
+            elif host.startswith('gateway/vpn'):
+                if ident.startswith('~'):
+                    ident = '*'
+                if '/x-' in host:
+                    host = host.split('/x-')[0] + '*'
+                self.cache[prefix] = '%s@%s' % (ident,host)
             elif host.startswith('gateway'):
                 h = host.split('/')
                 if 'ip.' in host:
                     ident = '*'
                     h = host.split('ip.')[1]
                 elif '/vpn/' in host:
-                    if 'x-' in host:
+                    if '/x-' in host:
                         h = h[:3]
                         h = '%s/*' % '/'.join(h)
                     else:
@@ -1466,7 +1472,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         partReason = 'Leaving the channel (no spam or action taken for %s days.) /invite %s %s again if needed'
         for channel in irc.state.channels:
             if not channel in self.registryValue('mainChannel') and not channel == self.registryValue('snoopChannel') and not channel == self.registryValue('logChannel') and not channel == self.registryValue('reportChannel') and not channel == self.registryValue('secretChannel'):
-                if self.registryValue('lastActionTaken',channel=channel) > 0.0 and self.registryValue('leaveChannelIfNoActivity',channel=channel) > -1:
+                if self.registryValue('lastActionTaken',channel=channel) > 1.0 and self.registryValue('leaveChannelIfNoActivity',channel=channel) > -1:
                     if time.time() - self.registryValue('lastActionTaken',channel=channel) > (self.registryValue('leaveChannelIfNoActivity',channel=channel) * 24 * 3600):
                        irc.queueMsg(ircmsgs.part(channel, partReason % (self.registryValue('leaveChannelIfNoActivity',channel=channel),irc.nick,channel)))
                        self.setRegistryValue('lastActionTaken',1.0,channel=channel)
@@ -2529,7 +2535,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if i.defcon:
             if len(self.registryValue('lethalChannels')) > 0:
                 for pattern in self.registryValue('lethalChannels'):
-                    if len(pattern) and pattern in channel and not user in channel:
+                    if len(pattern) and pattern in channel and not user in channel and not user in i.tokline:
                         i.toklineresults[user] = {}
                         i.toklineresults[user]['kind'] = 'lethal'
                         i.tokline[user] = text
