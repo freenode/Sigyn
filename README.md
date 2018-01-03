@@ -15,6 +15,11 @@ any time.
 See the [wiki](https://github.com/freenode/Sigyn/wiki) for setup instructions
 and commands, as well as a work-in-progress configuration manual.
 
+## Requesting Sigyn to your channel
+
+The best way is to discuss with a staffer, you could also ask for her presence temporary, with an /invite Sigyn ( reviewed by staff )
+But as invite notification can be missed, feel free to join #freenode-sigyn and ask in there.
+
 ## Support and Development
 
 [![#freenode-sigyn](https://kiwiirc.com/buttons/chat.freenode.net/freenode-sigyn.png)](https://kiwiirc.com/client/chat.freenode.net/#freenode-sigyn)
