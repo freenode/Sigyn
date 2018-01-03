@@ -600,6 +600,23 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         irc.replySuccess()
     vacuum = wrap(vacuum,['owner'])
 
+    def protect (self,irc,msg,args,channel,hostmask):
+        """<channel> <hostmask>
+
+        create or add <hostmask> to the account <channel> with <channel>,protected capability
+        """
+        user = ircdb.users.getUserId(channel)
+        if user:
+            user.addHostmask(hostmask)
+        else:
+            user = ircdb.users.newUser()
+            user.name = channel
+            user.addHostmask(hostmask)
+        user.addCapability('%s,protected' % channel)
+        ircdb.users.setUser(user)
+        irc.replySuccess()
+    protect = wrap(protect,['owner','channel','hostmask'])
+
     def isprotected (self,irc,msg,args,hostmask,channel):
         """<hostmask> [<channel>]
         
@@ -615,7 +632,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     irc.reply('%s is not protected in %s' % (hostmask,channel))
             else:
                 irc.reply('%s is not protected' % hostmask);
-    isprotected = wrap(defcon,['owner','hostmask',optional('channel')])
+    isprotected = wrap(isprotected,['owner','hostmask',optional('channel')])
 
     def checkactions (self,irc,msg,args,duration):
         """<duration> in days                                                                                                                                                                                                                                  
