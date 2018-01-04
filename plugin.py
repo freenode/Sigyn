@@ -625,6 +625,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
        if not channel in irc.state.channel:
            self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
            irc.queueMsg(ircmsgs.join(channel))
+           try:
+               network = conf.supybot.networks.get(irc.network)
+               network.channels().add(channel)
+           except KeyError:
+               pass
        irc.replySuccess()
     stay = wrap(stay,['owner','channel'])
 
