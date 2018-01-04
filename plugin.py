@@ -447,7 +447,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             connection.putheader("Content-Length", str(int(len(add))))
             connection.endheaders()
             connection.send(add)
-            self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,id))
+            response = connection.getresponse().read().replace('\n','')
+            if "You are not authorized to remove this incident" in response:
+                self.logChannel(irc,'RMDNSBL: You are not authorized to remove this incident %s (%s)' % (ip,id))
+            else:
+                self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,id))
         if len(self.rmDnsblQueue) == 0 and not self.pendingRmDnsbl:
             request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
             type, uri = urllib.splittype(droneblHost)
@@ -599,6 +603,30 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         c.close()
         irc.replySuccess()
     vacuum = wrap(vacuum,['owner'])
+
+    def leave (self,irc,msg,args,channel):
+       """<channel>
+
+       force the bot to part <channel> and won't rejoin even if invited
+       """
+       if channel in irc.state.channel:
+           reason = conf.supybot.plugins.channel.partMsg.getValue()
+           irc.queueMsg(ircmsgs.part(channel,reason))
+       self.setRegistryValue('lastActionTaken',0.0,channel=channel)
+       irc.replySuccess()  
+    leave = wrap(leave,['owner','channel'])
+
+    def stay (self,irc,msg,args,channel):
+       """<channel>
+
+       force bot to stay in <channel>
+       """
+       self.setRegistryValue('leaveChannelIfNoActivity',-1,channel=channel)
+       if not channel in irc.state.channel:
+           self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
+           irc.queueMsg(ircmsgs.join(channel))
+       irc.replySuccess()
+    stay = wrap(stay,['owner','channel'])
 
     def protect (self,irc,msg,args,channel,hostmask):
         """<channel> <hostmask>
@@ -1082,11 +1110,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     self.cache[prefix] = '%s@gateway/web/freenode/*' % ident
             elif host.startswith('gateway/tor-sasl'):
                 self.cache[prefix] = '*@%s' % host
-            elif host.startswith('gateway/vpn'):
+            elif host.startswith('gateway/vpn') or host.startswith('nat/'):
                 if ident.startswith('~'):
                     ident = '*'
                 if '/x-' in host:
-                    host = host.split('/x-')[0] + '*'
+                    host = host.split('/x-')[0] + '/*'
                 self.cache[prefix] = '%s@%s' % (ident,host)
             elif host.startswith('gateway'):
                 h = host.split('/')
@@ -1107,11 +1135,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 else:
                     h = host
                 self.cache[prefix] = '%s@%s' % (ident,h)
-            elif host.startswith('nat'):
-                h = host.split('/')
-                h = h[:1]
-                h = '%s/*' % '/'.join(h)
-                self.cache[prefix] = '%s@%s' % (ident,host)
             else:
                 if ident.startswith('~'):
                     ident = '*'
@@ -1704,10 +1727,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     network.channels().add(channel)
                except KeyError:
                     pass
-           elif i.defcon:
-               self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
-               irc.queueMsg(ircmsgs.join(channel))
-               self.logChannel(irc,"JOIN: [%s] due to %s's invite and defcon mode" % (channel,msg.prefix))
            else:
                self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
              #  i = self.getIrc(irc)
@@ -1794,7 +1813,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if ircmsgs.isAction(msg):
             text = ircmsgs.unAction(msg)
         raw = ircutils.stripColor(text)
-        raw = unicode(raw, 'utf-8')
+        raw = unicode(raw, "utf-8", errors="ignore")
         text = text.lower()
         mask = self.prefixToMask(irc,msg.prefix)
         i = self.getIrc(irc)
