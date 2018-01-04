@@ -373,6 +373,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.pendingRmDnsbl = False
         self.words = []
         self.channelCreationPattern = re.compile(r"^[a-z]{5,8}$")
+        self.collect = {}
+        self.collecting = False
 
         if len(self.registryValue('wordsList')):
             for item in self.registryValue('wordsList'):
@@ -386,6 +388,23 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     self.words.append(w)                    
                 except:
                     continue
+
+    def collectnick (self,irc,msg,args):
+        """
+
+        collect nicks during bot wave for analyze later, first call to start recording, second call to show results
+        """
+        if self.collecting:
+            L = []
+            for w in self.collect:
+                L.append('%s(%s)' % (w,self.collect[w]))
+            self.collect = {}
+            self.collecting = False
+            irc.reply('%s nicks: %s' % (len(L),' '.join(L)))
+        else:
+            self.collecting = True
+            irc.replySuccess()
+    collectnick = wrap(collectnick,['owner'])
 
     def lswords (self,irc,msg,args,word):
         """<word>
@@ -2174,10 +2193,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         nicks = self.registryValue('reportNicks')
         if msg.nick in nicks:
             i = self.getIrc(irc)
-            queue = self.getIrcQueueFor(irc,self.registryValue('reportChannel'),'lethalPatterns',7)
             if text.startswith('BAD:') and not '(tor' in text and '(' in text:
-                if msg.nick == 'topm-dnsbl':
-                    queue.enqueue(text)
                 permit = self.registryValue('reportPermit')
                 if permit > -1:
                     life = self.registryValue('reportLife')
@@ -2185,6 +2201,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     target = text.split('(')[0]
                     if len(text.split(' ')) > 1:
                         target = text.split(' ')[1]
+                    if self.collecting:
+                        (nick,ident,host) = ircutils.splitHostmask(target)
+                        if nick in self.collect:
+                            self.collect[nick] = self.collect[nick] + 1
+                        else:
+                            self.collect[nick] = 1
                     found = False
                     for q in queue:
                         if q == target:
