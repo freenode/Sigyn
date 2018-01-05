@@ -641,7 +641,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
        force bot to stay in <channel>
        """
        self.setRegistryValue('leaveChannelIfNoActivity',-1,channel=channel)
-       if not channel in irc.state.channel:
+       if not channel in irc.state.channels:
            self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
            irc.queueMsg(ircmsgs.join(channel))
            try:
@@ -1551,7 +1551,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         partReason = 'Leaving the channel (no spam or action taken for %s days.) /invite %s %s again if needed'
         for channel in irc.state.channels:
             if not channel in self.registryValue('mainChannel') and not channel == self.registryValue('snoopChannel') and not channel == self.registryValue('logChannel') and not channel == self.registryValue('reportChannel') and not channel == self.registryValue('secretChannel'):
-                if self.registryValue('lastActionTaken',channel=channel) > 1.0 and self.registryValue('leaveChannelIfNoActivity',channel=channel) > -1:
+                if self.registryValue('lastActionTaken',channel=channel) > 1.0 and self.registryValue('leaveChannelIfNoActivity',channel=channel) > -1 and not i.defcon:
                     if time.time() - self.registryValue('lastActionTaken',channel=channel) > (self.registryValue('leaveChannelIfNoActivity',channel=channel) * 24 * 3600):
                        irc.queueMsg(ircmsgs.part(channel, partReason % (self.registryValue('leaveChannelIfNoActivity',channel=channel),irc.nick,channel)))
                        self.setRegistryValue('lastActionTaken',1.0,channel=channel)
@@ -1753,6 +1753,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     pass
            else:
                self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
+               irc.queueMsg(ircmsgs.privsmg(msg.nick,'The invitation to %s will be reviewed by staff' % channel))
              #  i = self.getIrc(irc)
              #  if i.defcon:
              #      self.setRegistryValue('lastActionTaken',0.0,channel=channel)
@@ -2342,6 +2343,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     protected = ircdb.makeChannelCapability(target, 'protected')
                     if not ircdb.checkCapability(user, protected):
                         queue = self.getIrcQueueFor(irc,target,'snoteFlood',life)
+                        if i.defcon:
+                            if limit > 0:
+                                limit = limit - 1
                         # we are looking for notices from various users who targets a channel
                         stored = False
                         for u in queue:
@@ -2355,16 +2359,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
                             if self.registryValue('lastActionTaken',channel=target) > 0.0:
                                 if not target in irc.state.channels:
-                                    self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
                                     self.setRegistryValue('lastActionTaken',time.time(),channel=target)
-                                    irc.queueMsg(ircmsgs.join(target))
+                                    irc.sendMsg(ircmsgs.join(target))
+                                    self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
                                     try:
                                         network = conf.supybot.networks.get(irc.network)
                                         network.channels().add(target)
                                     except KeyError:
                                         pass
                             queue.reset()
-                            ## todo auto rejoin ?                                
         else:
             # nick being flooded by someone
             limit = self.registryValue('userFloodPermit')
