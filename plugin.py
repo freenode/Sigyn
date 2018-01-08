@@ -657,12 +657,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
         create or add <hostmask> to the account <channel> with <channel>,protected capability
         """
-        user = ircdb.users.getUserId(channel)
+        k = channel.replace('#','')
+        user = None
+        try:
+            user = ircdb.users.getUserId(k)
+        except KeyError:
+            pass
         if user:
             user.addHostmask(hostmask)
         else:
             user = ircdb.users.newUser()
-            user.name = channel
+            user.name = k
             user.addHostmask(hostmask)
         user.addCapability('%s,protected' % channel)
         ircdb.users.setUser(user)
@@ -997,7 +1002,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                chan = self.getChan(irc,channel)
                if len(chan.klines):
                    for q in chan.klines:
-                       if q.startswith(nick):
+                       if q.split(' ')[0] == nick:
                           ip = q.split(' ')[1]
                           self.logChannel(irc,'OP: [%s] %s asked for removal of %s (%s)' % (channel,msg.nick,ip,nick))
                           channels.append(channel)
@@ -1741,7 +1746,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def doInvite(self, irc, msg):
        channel = msg.args[1]
        i = self.getIrc(irc)
-       if channel and not channel in irc.state.channels:
+       if channel and not channel in irc.state.channels and not ircdb.checkIgnored(msg.prefix):
            if self.registryValue('lastActionTaken',channel=channel) > 0.0:
                self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                irc.queueMsg(ircmsgs.join(channel))
@@ -2359,7 +2364,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
                             if self.registryValue('lastActionTaken',channel=target) > 0.0:
                                 if not target in irc.state.channels:
-                                    self.setRegistryValue('lastActionTaken',time.time(),channel=target)
+                                    t = time.time() - self.registryValue('leaveChannelIfNoActivity',channel=channel) * 23 * 3600
+                                    self.setRegistryValue('lastActionTaken',t,channel=target)
                                     irc.sendMsg(ircmsgs.join(target))
                                     self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
                                     try:
