@@ -2364,7 +2364,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
                             if self.registryValue('lastActionTaken',channel=target) > 0.0:
                                 if not target in irc.state.channels:
-                                    t = time.time() - self.registryValue('leaveChannelIfNoActivity',channel=channel) * 23 * 3600
+                                    t = time.time() - self.registryValue('leaveChannelIfNoActivity',channel=target) * 23 * 3600
                                     self.setRegistryValue('lastActionTaken',t,channel=target)
                                     irc.sendMsg(ircmsgs.join(target))
                                     self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
