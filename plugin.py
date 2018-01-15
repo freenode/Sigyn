@@ -322,7 +322,7 @@ class Ircd (object):
         return updated
 
 class Chan (object):
-    __slots__ = ('channel', 'patterns', 'buffers', 'logs', 'nicks', 'called','klines')
+    __slots__ = ('channel', 'patterns', 'buffers', 'logs', 'nicks', 'called', 'klines', 'requestedBySpam')
     def __init__(self,channel):
         self.channel = channel
         self.patterns = None
@@ -331,6 +331,7 @@ class Chan (object):
         self.nicks = {}
         self.called = False
         self.klines = utils.structures.TimeoutQueue(900)
+        self.requestedBySpam = False
 
     def __repr__(self):
         return '%s(channel=%r, patterns=%r, buffers=%r, logs=%r, nicks=%r)' % (self.__class__.__name__,
@@ -1191,9 +1192,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             return '%s@%s' % (ident,host)
 
     def do401 (self,irc,msg):
+        # https://www.alien.net.au/irc/irc2numerics.html  ERR_NOSUCHNICK
         self.log.debug('handled unknown nick/channel')
 
     def do352 (self,irc,msg):
+        # RPL_WHOREPLY 
         channel = msg.args[0]
         (nick, ident, host) = (msg.args[5], msg.args[2], msg.args[3])
         chan = self.getChan(irc,channel)
@@ -1203,6 +1206,27 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if isCloaked(prefix):
             t = t - self.registryValue('ignoreDuration',channel=channel) - 1
         chan.nicks[nick] = [t,prefix,mask,'','']
+
+
+    def spam (self,irc,msg,args,channel):
+        """<channel>
+           
+        trusted users can ask the bot to join <channel> for a limited period of time
+        """
+        if not channel in irc.state.channels:
+            t = time.time() - self.registryValue('leaveChannelIfNoActivity',channel=channel) * 23 * 3600
+            self.setRegistryValue('lastActionTaken',t,channel=channel)
+            irc.sendMsg(ircmsgs.join(channel))
+            chan = self.getChan(irc,channel)
+            chan.requestedBySpam = True
+            self.logChannel(irc,"JOIN: [%s] due to %s (trusted)" % (channel,msg.prefix))
+            try:
+                network = conf.supybot.networks.get(irc.network)
+                network.channels().add(channel)
+            except KeyError:
+                pass
+            irc.replySuccess()
+    spam = wrap(spam,[('checkCapability','trusted'),'channel'])
 
     def unstaffed (self,irc,msg,args):
         """
@@ -1559,7 +1583,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if self.registryValue('lastActionTaken',channel=channel) > 1.0 and self.registryValue('leaveChannelIfNoActivity',channel=channel) > -1 and not i.defcon:
                     if time.time() - self.registryValue('lastActionTaken',channel=channel) > (self.registryValue('leaveChannelIfNoActivity',channel=channel) * 24 * 3600):
                        irc.queueMsg(ircmsgs.part(channel, partReason % (self.registryValue('leaveChannelIfNoActivity',channel=channel),irc.nick,channel)))
-                       self.setRegistryValue('lastActionTaken',1.0,channel=channel)
+                       chan = self.getChan(irc,channel)
+                       if chan.requestedBySpam:
+                           self.setRegistryValue('lastActionTaken',self.getRegistryValue('lastActionTaken'),channel=channel)
+                       else:
+                           self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                        self.logChannel(irc,'PART: [%s] due to inactivity for %s days' % (channel,self.registryValue('leaveChannelIfNoActivity',channel=channel)))
                        try:
                            network = conf.supybot.networks.get(irc.network)
@@ -1758,7 +1786,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     pass
            else:
                self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
-               irc.queueMsg(ircmsgs.privsmg(msg.nick,'The invitation to %s will be reviewed by staff' % channel))
+               irc.queueMsg(ircmsgs.privmsg(msg.nick,'The invitation to %s will be reviewed by staff' % channel))
              #  i = self.getIrc(irc)
              #  if i.defcon:
              #      self.setRegistryValue('lastActionTaken',0.0,channel=channel)
