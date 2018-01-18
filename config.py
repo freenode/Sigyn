@@ -66,6 +66,9 @@ conf.registerGlobalValue(Sigyn, 'wordsList',
 conf.registerGlobalValue(Sigyn, 'wordMinimum',
     registry.PositiveInteger(4,"""minimum length of words to use for detection"""))
 
+conf.registerGlobalValue(Sigyn, 'minimumUsersInChannel',
+    registry.Integer(-1,"""if /invite enabled, ( see lastActionTaken ), bot will do /list #channel to ensure it has enough users before joining"""))
+
 conf.registerGlobalValue(Sigyn, 'logChannel',
      registry.String("", """channel where bot's actions is announced"""))
 conf.registerGlobalValue(Sigyn, 'useNotice',
