@@ -535,7 +535,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         if not channel:
             irc.queueMsg(ircmsgs.privmsg(msg.nick,'Opered %s, enable %s, defcon %s, netsplit %s' % (i.opered,self.registryValue('enable'),(i.defcon),i.netsplit)))
-            irc.queueMsg(ircmsgs.privmsg(msg.nick,'There is %s permanent patterns and %s channels directly monitored' % (len(i.patterns),len(i.channels))))
+            irc.queueMsg(ircmsgs.privmsg(msg.nick,'There are %s permanent patterns and %s channels directly monitored' % (len(i.patterns),len(i.channels))))
             channels = 0
             prefixs = 0
             for k in i.queues:
@@ -1783,7 +1783,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
        channel = msg.args[1]
        i = self.getIrc(irc)
        if channel and not channel in irc.state.channels and not ircdb.checkIgnored(msg.prefix):
-           if self.registryValue('lastActionTaken',channel=channel) > 0.0:
+           if self.registryValue('leaveChannelIfNoActivity',channel=channel) == -1:
+               irc.queueMsg(ircmsgs.join(channel))
+               self.logChannel(irc,"JOIN: [%s] due to %s's invite" % (channel,msg.prefix))
+               try:
+                   network = conf.supybot.networks.get(irc.network)
+                   network.channels().add(channel)
+               except KeyError:
+                   pass
+           elif self.registryValue('lastActionTaken',channel=channel) > 0.0:
                if self.registryValue('minimumUsersInChannel') > -1:
                    i.invites[channel] = msg.prefix
                    irc.queueMsg(ircmsgs.IrcMsg('LIST %s' % channel))
@@ -1816,7 +1824,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             else:
                 self.logChannel(irc,"INVITE: [%s] by %s denied (%s users)" % (msg.args[1],i.invites[msg.args[1]],msg.args[2]))
                 (nick,ident,host) = ircutils.splitHostmask(i.invites[msg.args[1]])
-                irc.queueMsg(ircmsgs.privmsg(nick,'Invitation denied, there is only %s users in %s' % (msg.args[2],msg.args[1])))
+                irc.queueMsg(ircmsgs.privmsg(nick,'Invitation denied, there are only %s users in %s: contact staffers if needed.' % (msg.args[2],msg.args[1])))
             del i.invites[msg.args[1]]
 
     def resolveSnoopy (self,irc,account,email,badmail):
@@ -3121,6 +3129,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if len(pattern) < length:
                         pattern = None
                     else:
+                        s = s.strip()
                         if len(s) > len(pattern):
                             pattern = s
                         s = pattern
