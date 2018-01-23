@@ -630,9 +630,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
        force the bot to part <channel> and won't rejoin even if invited
        """
-       if channel in irc.state.channel:
+       if channel in irc.state.channels:
            reason = conf.supybot.plugins.channel.partMsg.getValue()
            irc.queueMsg(ircmsgs.part(channel,reason))
+           try:
+               network = conf.supybot.networks.get(irc.network)
+               network.channels().remove(channel)
+           except:
+               pass
        self.setRegistryValue('lastActionTaken',0.0,channel=channel)
        irc.replySuccess()  
     leave = wrap(leave,['owner','channel'])
