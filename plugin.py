@@ -1215,7 +1215,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         trusted users can ask the bot to join <channel> for a limited period of time
         """
         if not channel in irc.state.channels:
-            t = time.time() - self.registryValue('leaveChannelIfNoActivity',channel=channel) * 23 * 3600
+            t = time.time() - (self.registryValue('leaveChannelIfNoActivity',channel=channel) * 24 * 3600) + 3600
             self.setRegistryValue('lastActionTaken',t,channel=channel)
             irc.sendMsg(ircmsgs.join(channel))
             chan = self.getChan(irc,channel)
@@ -2424,7 +2424,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
                             if self.registryValue('lastActionTaken',channel=target) > 0.0:
                                 if not target in irc.state.channels:
-                                    t = time.time() - self.registryValue('leaveChannelIfNoActivity',channel=target) * 23 * 3600
+                                    t = time.time() - (self.registryValue('leaveChannelIfNoActivity',channel=target) * 24 * 3600) + 1800
                                     self.setRegistryValue('lastActionTaken',t,channel=target)
                                     irc.sendMsg(ircmsgs.join(target))
                                     self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
