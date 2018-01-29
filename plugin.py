@@ -659,28 +659,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
        irc.replySuccess()
     stay = wrap(stay,['owner','channel'])
 
-    def protect (self,irc,msg,args,channel,hostmask):
-        """<channel> <hostmask>
-
-        create or add <hostmask> to the account <channel> with <channel>,protected capability
-        """
-        k = channel.replace('#','')
-        user = None
-        try:
-            user = ircdb.users.getUserId(k)
-        except KeyError:
-            pass
-        if user:
-            user.addHostmask(hostmask)
-        else:
-            user = ircdb.users.newUser()
-            user.name = k
-            user.addHostmask(hostmask)
-        user.addCapability('%s,protected' % channel)
-        ircdb.users.setUser(user)
-        irc.replySuccess()
-    protect = wrap(protect,['owner','channel','hostmask'])
-
     def isprotected (self,irc,msg,args,hostmask,channel):
         """<hostmask> [<channel>]
         
@@ -931,7 +909,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 l = self.registryValue('computedPatternLife',channel=channel)
                 for channel in i.channels:
                     chan = self.getChan(irc,channel)
-                    ID = self.registryValue('shareComputedPatternID',channel=channel)
+                    id = self.registryValue('shareComputedPatternID',channel=channel)
                     if id == shareID:
                         life = self.registryValue('computedPatternLife',channel=channel)
                         if not chan.patterns:
@@ -2019,6 +1997,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if time.time()-ts > ignoreDuration:
                         isIgnored = True
                 reason = ''
+                publicreason = ''
                 hilight = False
                 flag = ircdb.makeChannelCapability(channel, 'hilight')
                 if ircdb.checkCapability(msg.prefix, flag):
@@ -2026,11 +2005,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if hilight and self.hasAbuseOnChannel(irc,channel,'hilight'):
                         isIgnored = False
                     if hilight:
+                         publicreason = 'nicks/hilight spam'
                          reason = hilight
                 if chan.patterns and not len(reason):
                     for pattern in chan.patterns:
                         if pattern in text:
                             reason = 'matches tmp pattern in %s' % channel
+                            publicreason = 'your sentence matches temporary blacklisted words'
                             # redo duration
                             chan.patterns.enqueue(pattern)
                             break
@@ -2094,24 +2075,34 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if not reason:
                     if massrepeat:
                         reason = massrepeat
+                        publicreason = 'repetition detected'
                     elif lowmassrepeat:
                         reason = lowmassrepeat
+                        publicreason = 'repetition detected'
                     elif repeat:
                         reason = repeat
+                        publicreason = 'repetition detected'
                     elif lowrepeat:
                         reason = lowrepeat
+                        publicreason = 'repetition detected'
                     elif hilight:
                         reason = hilight
+                        publicreason = 'nicks/hilight spam'
                     elif lowhilight:
                         reason = lowhilight
+                        publicreason = 'nicks/hilight spam'
                     elif flood:
                         reason = flood
+                        publicreason = 'flood detected'
                     elif lowflood:
                         reason = lowflood
+                        publicreason = 'flood detected'
                     elif ctcp:
                         reason = ctcp
+                        publicreason = 'channel CTCP'
                     elif notice:
                         reason = notice
+                        publicreason = 'channel notice'
                 if reason:
                     if chan.called:
                         isIgnored = False
@@ -2131,8 +2122,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             if len(q) == 0:
                                 q.enqueue(text)
                                 self.logChannel(irc,'IGNORED: [%s] %s (%s)' % (channel,msg.prefix,reason))
+                                matter = None
                                 if msg.nick:
-                                    irc.queueMsg(ircmsgs.notice(msg.nick,"Your actions in %s tripped automated anti-spam measures, but were ignored based on your time in channel; stop now, or automated action will still be taken. If you have any questions, please don't hesitate to contact a member of staff" % channel))
+                                    irc.queueMsg(ircmsgs.notice(msg.nick,"Your actions in %s tripped automated anti-spam measures (%s), but were ignored based on your time in channel; stop now, or automated action will still be taken. If you have any questions, please don't hesitate to contact a member of staff" % (channel,publicreason)))
                     else:
                         isBanned = True
                         log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
@@ -2427,17 +2419,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         users = list(queue)
                         if len(queue) > limit:
                             self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
-                            if self.registryValue('lastActionTaken',channel=target) > 0.0:
-                                if not target in irc.state.channels:
-                                    t = time.time() - (self.registryValue('leaveChannelIfNoActivity',channel=target) * 24 * 3600) + 1800
-                                    self.setRegistryValue('lastActionTaken',t,channel=target)
-                                    irc.sendMsg(ircmsgs.join(target))
-                                    self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
-                                    try:
-                                        network = conf.supybot.networks.get(irc.network)
-                                        network.channels().add(target)
-                                    except KeyError:
-                                        pass
+                            #if self.registryValue('lastActionTaken',channel=target) > 0.0:
+                            #    if not target in irc.state.channels:
+                            #        t = time.time() - (self.registryValue('leaveChannelIfNoActivity',channel=target) * 24 * 3600) + 1800
+                            #        self.setRegistryValue('lastActionTaken',t,channel=target)
+                            #        irc.sendMsg(ircmsgs.join(target))
+                            #        self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
+                            #        try:
+                            #            network = conf.supybot.networks.get(irc.network)
+                            #            network.channels().add(target)
+                            #        except KeyError:
+                            #            pass
                             queue.reset()
         else:
             # nick being flooded by someone
