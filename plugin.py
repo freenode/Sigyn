@@ -3148,34 +3148,32 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             found = True
                             break
                     if not found:
-                        pattern = pattern.strip()
-                        users = {}
-                        users[mask] = True
-                        for u in chan.logs:
-                            user = 'n!%s' % u
-                            if not u in users and ircutils.isUserHostmask(user):
-                                for m in chan.logs[u]:
-                                    if pattern in m:
-                                        prefix = u
-                                        if isCloaked(user):
-                                            nick = None
-                                            for n in chan.nicks:
-                                                if chan.nicks[n][2] == u:
-                                                    nick = n
-                                                    break
-                                            if nick:
-                                                prefix = '%s!%s' % (nick,u)
-                                        # not 100% accurate protection, but still better than nothing
-                                        # no support for ignored user, ops, voiced etc ...
-                                        if ircdb.checkCapability(prefix,'protected'):
-                                            break
-                                        protected = ircdb.makeChannelCapability(channel,'protected')
-                                        if ircdb.checkCapability(prefix,protected):
-                                            break
-                                        self.kline(irc,prefix,u,self.registryValue('klineDuration'),'pattern creation in %s (%s)' % (channel,kind))
-                                        self.logChannel(irc,"BAD: [%s] %s (pattern creation - %s)" % (channel,u,kind))
-                                        break
-                            users[u] = True
+##this allow spammer one more line of spam, but also help to handle properly ignored user
+#                        users = {}
+#                        users[mask] = True
+#                        for u in chan.logs:
+#                            user = 'n!%s' % u
+#                            if not u in users and ircutils.isUserHostmask(user):
+#                                for m in chan.logs[u]:
+#                                    if pattern in m:
+#                                        prefix = u
+#                                        if isCloaked(user):
+#                                            nick = None
+#                                            for n in chan.nicks:
+#                                                if chan.nicks[n][2] == u:
+#                                                    nick = n
+#                                                    break
+#                                            if nick:
+#                                                prefix = '%s!%s' % (nick,u)
+#                                        if ircdb.checkCapability(prefix,'protected'):
+#                                            break
+#                                        protected = ircdb.makeChannelCapability(channel,'protected')
+#                                        if ircdb.checkCapability(prefix,protected):
+#                                            break
+#                                        self.kline(irc,prefix,u,self.registryValue('klineDuration'),'pattern creation in %s (%s)' % (channel,kind))
+#                                        self.logChannel(irc,"BAD: [%s] %s (pattern creation - %s)" % (channel,u,kind))
+#                                        break
+#                            users[u] = True
                         shareID = self.registryValue('shareComputedPatternID',channel=channel)
                         if shareID != -1:
                             nb = 0
