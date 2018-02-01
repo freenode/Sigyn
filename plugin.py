@@ -1576,7 +1576,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        irc.queueMsg(ircmsgs.part(channel, partReason % (self.registryValue('leaveChannelIfNoActivity',channel=channel),irc.nick,channel)))
                        chan = self.getChan(irc,channel)
                        if chan.requestedBySpam:
-                           self.setRegistryValue('lastActionTaken',self.getRegistryValue('lastActionTaken'),channel=channel)
+                           self.setRegistryValue('lastActionTaken',self.registryValue('lastActionTaken'),channel=channel)
                        else:
                            self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                        self.logChannel(irc,'PART: [%s] due to inactivity for %s days' % (channel,self.registryValue('leaveChannelIfNoActivity',channel=channel)))
