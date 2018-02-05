@@ -97,6 +97,11 @@ conf.registerGlobalValue(Sigyn, 'netsplitDuration',
 conf.registerGlobalValue(Sigyn, 'alertOnWideKline',
     registry.Integer(-1,"""alert if a kline hits more than expected users"""))
 
+conf.registerGlobalValue(Sigyn, 'decloakPermit',
+    registry.Integer(-1,"""-1 to disable, alert in logChannel if limit reached"""))
+conf.registerGlobalValue(Sigyn, 'decloakLife',
+    registry.PositiveInteger(1,"""duration of stored akick add/del in seconds"""))
+
 conf.registerGlobalValue(Sigyn, 'lagPermit',
      registry.Integer(-1, """max lag allowed in seconds, otherwise entering netsplit mode"""))
 conf.registerGlobalValue(Sigyn, 'lagInterval',
@@ -323,6 +328,12 @@ conf.registerChannelValue(Sigyn, 'massRepeatPercent',
     registry.Probability(1.00,"""percentage similarity between previous and current message to trigger a massRepeat count"""))
 conf.registerChannelValue(Sigyn, 'massRepeatMinimum',
     registry.PositiveInteger(1,"""minimum number of chars to enter massRepeat detection"""))
+
+
+conf.registerChannelValue(Sigyn, 'joinSpamPartPermit',
+    registry.Integer(-1,"""number of messages before leaving channel, -1 to disable"""))
+conf.registerChannelValue(Sigyn, 'joinSpamPartLife',
+    registry.PositiveInteger(1,"""duration in seconds of user presence in channel"""))
 
 conf.registerChannelValue(Sigyn, 'computedPattern',
     registry.Integer(-1,"""minimun number of chars needed to keep it as a spam pattern, -1 to disable"""))

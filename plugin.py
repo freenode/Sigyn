@@ -1998,6 +1998,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         isIgnored = True
                 reason = ''
                 publicreason = ''
+                if self.registryValue('joinSpamPartPermit',channel=channel) > -1:
+                    kind = 'joinSpamPart'
+                    life = self.registryValue('joinSpamPartLife',channel=channel)
+                    key = mask
+                    if not kind in chan.buffers:
+                        chan.buffers[kind] = {}
+                    if not key in chan.buffers[kind]:
+                        chan.buffers[kind][key] = utils.structures.TimeoutQueue(life)
+                    elif chan.buffers[kind][key].timeout != life:
+                        chan.buffers[kind][key].setTimeout(life)
+                    chan.buffers[kind][key].enqueue(key)
                 hilight = False
                 flag = ircdb.makeChannelCapability(channel, 'hilight')
                 if ircdb.checkCapability(msg.prefix, flag):
@@ -2014,6 +2025,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             publicreason = 'your sentence matches temporary blacklisted words'
                             # redo duration
                             chan.patterns.enqueue(pattern)
+                            self.isAbuseOnChannel(irc,channel,'pattern',mask)
                             break
                 # channel detections
                 massrepeat = False
@@ -2250,6 +2262,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                            for m in q:
                                ms.append(m)
                            self.logChannel(irc,'SERVICE: %s registered loads of accounts %s' % (ip,', '.join(ms)))
+            if 'AKICK:ADD:' in text or 'AKICK:DEL:' in text:
+               life = self.registryValue('decloakLife')
+               limit = self.registryValue('decloakPermit')
+               if limit > -1:
+                   origin = text.split(' ')[0]
+                   target = text.split(' ').pop()
+                   q = self.getIrcQueueFor(irc,origin,target,life)
+                   q.enqueue(text)
+                   if len(q) > limit:
+                       q.reset()
+                       self.logChannel(irc,'SERVICE: [%s] %s suspicious AKICK behaviour' % (target,origin)) 
 
     def handleReportMessage (self,irc,msg):
         (targets, text) = msg.args
@@ -3411,7 +3434,24 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             #self.kill(irc,msg.nick,msg.prefix)
                             #self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'%s in %s' % (bad,channel))
                             self.logChannel(irc,"IGNORED: [%s] %s (Part's message %s) : %s" % (channel,msg.prefix,bad,reason))
-
+                    if not isBanned:
+                        flag = ircdb.makeChannelCapability(channel, 'joinSpamPart')
+                        if ircdb.checkCapability(msg.prefix, flag):
+                            limit = self.registryValue('joinSpamPartPermit',channel=channel)
+                            if limit > -1:
+                                kind = 'joinSpamPart'
+                                life = self.registryValue('joinSpamPartLife',channel=channel)
+                                key = mask
+                                if kind in chan.buffers and key in chan.buffers[kind] and len(chan.buffers[kind][key]) == limit and msg.nick in chan.nicks and time.time() - chan.nicks[msg.nick][0] < life:
+                                    reason = '(%s/%ss joinSpamPart)' % (limit,life)
+                                    klinereason = reason
+                                    if i.defcon:
+                                        klinereason = '!dnsbl %s' % reason
+                                    self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),klinereason)
+                                    self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask))
+                                    isBanned = True
+                                    chan.buffers[kind][key].reset()
+                                    continue
     def doKick (self,irc,msg):
         channel = target = reason = None
         if len(msg.args) == 3:
@@ -3469,6 +3509,23 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,'broken client',mask))
                         isBanned = True
                         continue
+                    flag = ircdb.makeChannelCapability(channel, 'joinSpamPart')
+                    if ircdb.checkCapability(msg.prefix, flag) and reason == 'Remote host closed the connection':
+                        limit = self.registryValue('joinSpamPartPermit',channel=channel)
+                        if limit > -1:
+                            kind = 'joinSpamPart'
+                            life = self.registryValue('joinSpamPartLife',channel=channel)
+                            key = mask
+                            if kind in chan.buffers and key in chan.buffers[kind] and len(chan.buffers[kind][key]) == limit and msg.nick in chan.nicks and time.time() - chan.nicks[msg.nick][0] < life:
+                                reason = '(%s/%ss joinSpamPart)' % (limit,life)
+                                klinereason = reason
+                                if i.defcon:
+                                    klinereason = '!dnsbl %s' % reason
+                                self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),klinereason)
+                                self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask))
+                                isBanned = True
+                                chan.buffers[kind][key].reset()
+                                continue
                     hosts = self.registryValue('brokenHost',channel=channel)
                     reasons = ['Read error: Connection reset by peer','Client Quit','Excess Flood','Max SendQ exceeded','Remote host closed the connection']
                     if 'broken' in chan.buffers and mask in chan.buffers['broken'] and len(chan.buffers['broken'][mask]) > 1 and reason in reasons and len(hosts):
