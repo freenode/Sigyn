@@ -1758,7 +1758,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        if '##' in i.tokline[nick]:
                            channel = '##%s' % i.tokline[nick].split('##')[1]
                        self.kline(irc,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask'],self.registryValue('klineDuration'),'lethal creation %s' % channel)
-                       self.logChannel(irc,'BAD: [%s] %s (lethal creation - %s) -> %s' % (channel,i.toklineresults[nick]['hostmask'],found,i.toklineresults[nick]['mask']))
+                       self.logChannel(irc,'BAD: [%s] %s (lethal creation) -> %s' % (channel,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask']))
            del i.tokline[nick]
            del i.toklineresults[nick]
 
@@ -2442,18 +2442,21 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         users = list(queue)
                         if len(queue) > limit:
                             self.logChannel(irc,'NOTE: [%s] is flooded by %s' % (target,', '.join(users)))
-                            #if self.registryValue('lastActionTaken',channel=target) > 0.0:
-                            #    if not target in irc.state.channels:
-                            #        t = time.time() - (self.registryValue('leaveChannelIfNoActivity',channel=target) * 24 * 3600) + 1800
-                            #        self.setRegistryValue('lastActionTaken',t,channel=target)
-                            #        irc.sendMsg(ircmsgs.join(target))
-                            #        self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
-                            #        try:
-                            #            network = conf.supybot.networks.get(irc.network)
-                            #            network.channels().add(target)
-                            #        except KeyError:
-                            #            pass
                             queue.reset()
+                            queue = self.getIrcQueueFor(irc,target,'snoteFloodJoin',life)
+                            queue.enqueue(text)
+                            if len(queue) > limit and self.registryValue('lastActionTaken',channel=target) > 0.0 and i.defcon:
+                                if not target in irc.state.channels:
+                                    t = time.time() - (self.registryValue('leaveChannelIfNoActivity',channel=target) * 24 * 3600) + 1800
+                                    self.setRegistryValue('lastActionTaken',t,channel=target)
+                                    irc.sendMsg(ircmsgs.join(target))
+                                    self.logChannel(irc,"JOIN: [%s] due to flood snote" % target)
+                                    try:
+                                        network = conf.supybot.networks.get(irc.network)
+                                        network.channels().add(target)
+                                    except KeyError:
+                                        pass
+                                queue.reset()
         else:
             # nick being flooded by someone
             limit = self.registryValue('userFloodPermit')
@@ -3443,15 +3446,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 life = self.registryValue('joinSpamPartLife',channel=channel)
                                 key = mask
                                 if kind in chan.buffers and key in chan.buffers[kind] and len(chan.buffers[kind][key]) == limit and msg.nick in chan.nicks and time.time() - chan.nicks[msg.nick][0] < life:
-                                    reason = '(%s/%ss joinSpamPart)' % (limit,life)
-                                    klinereason = reason
-                                    if i.defcon:
-                                        klinereason = '!dnsbl %s' % reason
-                                    self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),klinereason)
-                                    self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask))
-                                    isBanned = True
-                                    chan.buffers[kind][key].reset()
-                                    continue
+                                    self.isAbuseOnChannel(irc,channel,'joinSpamPart',mask)
+                                    if self.hasAbuseOnChannel(irc,channel,'joinSpamPart'):
+                                        reason = '(%s/%ss joinSpamPart)' % (limit,life)
+                                        klinereason = reason
+                                        if i.defcon:
+                                            klinereason = '!dnsbl %s' % reason
+                                        self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),klinereason)
+                                        self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask))
+                                        isBanned = True
+                                        chan.buffers[kind][key].reset()
+                                        continue
     def doKick (self,irc,msg):
         channel = target = reason = None
         if len(msg.args) == 3:
@@ -3517,15 +3522,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             life = self.registryValue('joinSpamPartLife',channel=channel)
                             key = mask
                             if kind in chan.buffers and key in chan.buffers[kind] and len(chan.buffers[kind][key]) == limit and msg.nick in chan.nicks and time.time() - chan.nicks[msg.nick][0] < life:
-                                reason = '(%s/%ss joinSpamPart)' % (limit,life)
-                                klinereason = reason
-                                if i.defcon:
-                                    klinereason = '!dnsbl %s' % reason
-                                self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),klinereason)
-                                self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask))
-                                isBanned = True
-                                chan.buffers[kind][key].reset()
-                                continue
+                                self.isAbuseOnChannel(irc,channel,'joinSpamPart',mask)
+                                if self.hasAbuseOnChannel(irc,channel,'joinSpamPart'):
+                                    reason = '(%s/%ss joinSpamPart)' % (limit,life)
+                                    klinereason = reason
+                                    if i.defcon:
+                                        klinereason = '!dnsbl %s' % reason
+                                    self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),klinereason)
+                                    self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask))
+                                    isBanned = True
+                                    chan.buffers[kind][key].reset()
+                                    continue
                     hosts = self.registryValue('brokenHost',channel=channel)
                     reasons = ['Read error: Connection reset by peer','Client Quit','Excess Flood','Max SendQ exceeded','Remote host closed the connection']
                     if 'broken' in chan.buffers and mask in chan.buffers['broken'] and len(chan.buffers['broken'][mask]) > 1 and reason in reasons and len(hosts):
