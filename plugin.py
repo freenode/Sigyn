@@ -491,12 +491,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         else:
             self.rmDnsblQueue.append([irc, ip, droneblHost, droneblKey])
 
-    def fillDnsbl (self,irc,ip,droneblHost,droneblKey):
+    def fillDnsbl (self,irc,ip,droneblHost,droneblKey,comment=None):
         def check(answer):
             self.pendingAddDnsbl = False
             if len(self.addDnsblQueue) > 0:
                 item = self.addDnsblQueue.pop()
-                self.fillDnsbl(item[0],item[1],item[2],item[3])
+                self.fillDnsbl(item[0],item[1],item[2],item[3],item[4])
             if 'listed="1"' in answer:
                 return
             add = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><add ip='"+ip+"' type='3' comment='used by irc spam bot' /></request>"
@@ -508,7 +508,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             connection.putheader("Content-Length", str(int(len(add))))
             connection.endheaders()
             connection.send(add)
-            self.logChannel(irc,'DNSBL: %s' % ip)
+            if comment:
+                self.logChannel(irc,'DNSBL: %s (%s)' % (ip,comment))
+            else:
+                self.logChannel(irc,'DNSBL: %s' % ip)
         if len(self.addDnsblQueue) == 0 or not self.pendingAddDnsbl:
             self.pendingAddDnsbl = True
             request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
@@ -525,7 +528,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             except:
                 self.logChannel(irc,'DNSBL: TimeOut for %s' % ip)
         else:
-            self.addDnsblQueue.append([irc, ip, droneblHost, droneblKey])
+            self.addDnsblQueue.append([irc, ip, droneblHost, droneblKey,comment])
 
     def state (self,irc,msg,args,channel):
         """[<channel>]
@@ -835,17 +838,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     lstmp = wrap(lstmp,['op'])
 
 
-    def dnsbl (self,irc,msg,args,ips):
-       """<ip> [<ip>]
+    def dnsbl (self,irc,msg,args,ips,comment):
+       """<ip> [,<ip>] [<comment>]
 
           add <ips> on dronebl"""
        for ip in ips:
            if utils.net.isIPV4(ip):
-               t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
+               t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),comment))
                t.setDaemon(True)
                t.start()
        irc.replySuccess()
-    dnsbl = wrap(dnsbl,['owner',many('ip')])
+    dnsbl = wrap(dnsbl,['owner',commalist('ip'),rest('text')])
 
     def rmdnsbl (self,irc,msg,args,ips):
         """<ip> [<ip>]
