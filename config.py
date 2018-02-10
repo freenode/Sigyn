@@ -134,6 +134,9 @@ conf.registerGlobalValue(Sigyn, 'ipv4AbusePermit',
 conf.registerGlobalValue(Sigyn, 'ipv4AbuseLife',
      registry.PositiveInteger(1, """life duration of those kline in seconds"""))
 
+conf.registerGlobalValue(Sigyn, 'useWhoWas',
+     registry.Boolean(False, """use whowas for resolving ip"""))
+
 # to fight some specific spambot
 conf.registerGlobalValue(Sigyn, 'channelCreationPermit',
     registry.Integer(-1,"""-1 to disable, announce always, kline on defcon"""))
