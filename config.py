@@ -140,7 +140,7 @@ conf.registerGlobalValue(Sigyn, 'useWhoWas',
 conf.registerGlobalValue(Sigyn,'msgInviteConfirm',
      registry.String("Your request has been submitted to freenode staff.","""sent to op who requested /invite"""))
 
-conf.registerGlobalValue(Sigyn,'msgInviteConfirm',
+conf.registerGlobalValue(Sigyn,'msgTooManyGhost',
      registry.String("Banned due to too many connections in a short period, email kline@freenode.net when corrected.","""sent to op who requested /invite"""))
 
 conf.registerGlobalValue(Sigyn,'staffCloak',

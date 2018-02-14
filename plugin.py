@@ -1228,7 +1228,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             for nick in list(irc.state.channels[channel].users):
                 try:
                     hostmask = irc.state.nickToHostmask(nick)
-                    if ircutils.isUserHostmask(hostmask) and self.registryValue('staffCloack') in hostmask:
+                    if ircutils.isUserHostmask(hostmask) and self.registryValue('staffCloak') in hostmask:
                         found = True
                         break
                 except:
@@ -1271,7 +1271,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 #                    try:
 #                        hostmask = irc.state.nickToHostmask(nick)
 #                        if ircutils.isUserHostmask(hostmask):
-#                            if self.registryValue('staffCloack') in hostmask:
+#                            if self.registryValue('staffCloak') in hostmask:
 #                                hasStaff = True
 #                            mask = self.prefixToMask(irc,hostmask,channel)
 #                            d = t
