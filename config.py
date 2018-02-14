@@ -137,6 +137,15 @@ conf.registerGlobalValue(Sigyn, 'ipv4AbuseLife',
 conf.registerGlobalValue(Sigyn, 'useWhoWas',
      registry.Boolean(False, """use whowas for resolving ip"""))
 
+conf.registerGlobalValue(Sigyn,'msgInviteConfirm',
+     registry.String("Your request has been submitted to freenode staff.","""sent to op who requested /invite"""))
+
+conf.registerGlobalValue(Sigyn,'msgInviteConfirm',
+     registry.String("Banned due to too many connections in a short period, email kline@freenode.net when corrected.","""sent to op who requested /invite"""))
+
+conf.registerGlobalValue(Sigyn,'staffCloak',
+     registry.String("freenode/staff","""used to identify staffers"""))
+
 # to fight some specific spambot
 conf.registerGlobalValue(Sigyn, 'channelCreationPermit',
     registry.Integer(-1,"""-1 to disable, announce always, kline on defcon"""))
