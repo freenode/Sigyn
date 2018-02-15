@@ -351,11 +351,17 @@ class Pattern (object):
         self._match = False
         if regexp:
             self._match = utils.str.perlReToPythonRe(pattern)
-    def match (self,text):
-        if self._match:
-            return self._match.search (text) != None
-        return self.pattern in text
 
+    def match (self,text):
+        s = False
+        try:
+            if self._match:
+                s = self._match.search (text) != None
+            else:
+                s = self.pattern in text
+        except:
+            s = False
+        return s
     def __repr__(self):
         return '%s(uid=%r, pattern=%r, limit=%r, life=%r, _match=%r)' % (self.__class__.__name__,
         self.uid, self.pattern, self.limit, self.life, self._match)
@@ -772,6 +778,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         add a permanent <pattern> : kline after <limit> calls raised during <life> seconds,
         for immediate kline use limit 0"""
         i = self.getIrc(irc)
+        pattern = pattern.lower()
         result = i.add(self.getDb(irc.network),msg.prefix,pattern,limit,life,False)
         self.logChannel(irc,'PATTERN: %s added #%s : "%s" %s/%ss' % (msg.nick,result,pattern,limit,life))
         irc.reply('#%s added' % result)
@@ -1168,12 +1175,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.cache[prefix] = '%s@%s' % (ident,host)
             else:
                 i = self.getIrc(irc)
-                if not prefix in i.resolving:
+                if self.registryValue('useWhoWas'):
+                    self.cache[prefix] = '%s@%s' % (ident,host)
+                elif not prefix in i.resolving:
                     i.resolving[prefix] = True
                     t = world.SupyThread(target=self.resolve,name=format('resolve %s', prefix),args=(irc,prefix,channel,dnsbl))
                     t.setDaemon(True)
                     t.start()
-                return '%s@%s' % (ident,host)
+                    return '%s@%s' % (ident,host)
         if prefix in self.cache:
             return self.cache[prefix]
         else:
@@ -1187,15 +1196,16 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def do352 (self,irc,msg):
         # RPL_WHOREPLY 
-        channel = msg.args[0]
+        channel = msg.args[1]
         (nick, ident, host) = (msg.args[5], msg.args[2], msg.args[3])
-        chan = self.getChan(irc,channel)
-        t = time.time()
-        prefix = '%s!%s@%s' % (nick,ident,host)
-        mask = self.prefixToMask(irc,prefix,channel)
-        if isCloaked(prefix,self):
-            t = t - self.registryValue('ignoreDuration',channel=channel) - 1
-        chan.nicks[nick] = [t,prefix,mask,'','']
+        if irc.isChannel(channel):
+            chan = self.getChan(irc,channel)
+            t = time.time()
+            prefix = '%s!%s@%s' % (nick,ident,host)
+            mask = self.prefixToMask(irc,prefix,channel)
+            if isCloaked(prefix,self):
+                t = t - self.registryValue('ignoreDuration',channel=channel) - 1
+            chan.nicks[nick] = [t,prefix,mask,'','']
 
     def spam (self,irc,msg,args,channel):
         """<channel>
@@ -1410,8 +1420,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def getChan (self,irc,channel):
         i = self.getIrc(irc)
-        if not channel in i.channels:
+        if not channel in i.channels and irc.isChannel(channel):
             i.channels[channel] = Chan(channel)
+            irc.queueMsg(ircmsgs.who(channel))
         return i.channels[channel]
 
     def kill (self,irc,nick,reason=None):
@@ -1573,7 +1584,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         partReason = 'Leaving the channel (no spam or action taken for %s days.) /invite %s %s again if needed'
         for channel in irc.state.channels:
-            if not channel in self.registryValue('mainChannel') and not channel == self.registryValue('snoopChannel') and not channel == self.registryValue('logChannel') and not channel == self.registryValue('reportChannel') and not channel == self.registryValue('secretChannel'):
+            if irc.isChannel(channel) and not channel in self.registryValue('mainChannel') and not channel == self.registryValue('snoopChannel') and not channel == self.registryValue('logChannel') and not channel == self.registryValue('reportChannel') and not channel == self.registryValue('secretChannel'):
                 if self.registryValue('lastActionTaken',channel=channel) > 1.0 and self.registryValue('leaveChannelIfNoActivity',channel=channel) > -1 and not i.defcon:
                     if time.time() - self.registryValue('lastActionTaken',channel=channel) > (self.registryValue('leaveChannelIfNoActivity',channel=channel) * 24 * 3600):
                        irc.queueMsg(ircmsgs.part(channel, partReason % (self.registryValue('leaveChannelIfNoActivity',channel=channel),irc.nick,channel)))
@@ -1892,7 +1903,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             text = ircmsgs.unAction(msg)
         raw = ircutils.stripColor(text)
         raw = unicode(raw, "utf-8", errors="ignore")
-        text = text.lower()
+        text = raw.lower()
         mask = self.prefixToMask(irc,msg.prefix)
         i = self.getIrc(irc)
         if not i.ping or time.time() - i.ping > self.registryValue('lagInterval'):
