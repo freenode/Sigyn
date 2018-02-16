@@ -385,6 +385,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.channelCreationPattern = re.compile(r"^[#a-z]{6,9}$")
         self.collect = {}
         self.collecting = False
+        self.starting = world.starting
 
         if len(self.registryValue('wordsList')):
             for item in self.registryValue('wordsList'):
@@ -675,7 +676,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         
         returns true if <hostmask> is protected, in optional <channel>"""
         if ircdb.checkCapability(hostmask, 'protected'):
-            irc.reply('%s is globaly protected' % hostmask)
+            irc.reply('%s is globally protected' % hostmask)
         else:
             if channel:
                 protected = ircdb.makeChannelCapability(channel, 'protected')
@@ -1392,7 +1393,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        continue
         if len(ops):
             for i in range(0, len(ops), 4):
-                irc.sendMsg(ircmsgs.ops(channel,ops[i:i+4],irc.prefix))
+                irc.sendMsg(ircmsgs.ops(self.registryValue('mainChannel'),ops[i:i+4],irc.prefix))
 
     def getIrc (self,irc):
         if not irc.network in self._ircs:
@@ -1422,7 +1423,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         if not channel in i.channels and irc.isChannel(channel):
             i.channels[channel] = Chan(channel)
-            irc.queueMsg(ircmsgs.who(channel))
+            if not self.starting:
+                irc.queueMsg(ircmsgs.who(channel))
         return i.channels[channel]
 
     def kill (self,irc,nick,reason=None):
@@ -1716,9 +1718,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            del i.mx[nick]
            mask = self.prefixToMask(irc,hostmask)
            self.logChannel(irc,'SERVICE: %s registered %s with *@%s is in mxbl --> %s' % (hostmask,nick,email,mask))
-           if i.defcon:
+           if i.defcon and len(email):
                self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'register abuses (%s)' % email)
-           if badmail:
+           if badmail and len(email) and len(nick):
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :BADMAIL ADD *@%s %s' % (email,mx)))
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FDROP %s' % nick))
        elif nick in i.tokline:
