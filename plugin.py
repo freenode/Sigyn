@@ -1928,7 +1928,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if i.netsplit:
             if time.time() > i.netsplit:
                 i.netsplit = False
-                self.logChannel(irc,"INFO: netsplit mode desactivated")
+                self.logChannel(irc,"INFO: netsplit mode deactivated")
         if mask in i.klines:
             self.log.debug('Ignoring %s (%s) - kline in progress', msg.prefix,mask)
             return
