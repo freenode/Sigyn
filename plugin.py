@@ -1070,7 +1070,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             return r
         return [h]
 
-    def resolve (self,irc,prefix,channel='',dnsbl=False):
+    def resolve (self,irc,prefix,channel='',dnsbl=False,comment=False):
         (nick,ident,host) = ircutils.splitHostmask(prefix)
         if ident.startswith('~'):
             ident = '*'
@@ -1104,7 +1104,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.log.debug('%s is resolved as %s@%s' % (prefix,ident,h))
                 if dnsbl and utils.net.isIPV4(h):
                     if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
-                        t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', h),args=(irc,h,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
+                        t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', h),args=(irc,h,self.registryValue('droneblHost'),self.registryValue('droneblKey'),comment))
                         t.setDaemon(True)
                         t.start()
                         if prefix in i.resolving:
@@ -1124,7 +1124,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if prefix in i.resolving:
             del i.resolving[prefix]
 
-    def prefixToMask (self,irc,prefix,channel='',dnsbl=False):
+    def prefixToMask (self,irc,prefix,channel='',dnsbl=False,comment=None):
         if prefix in self.cache:
             return self.cache[prefix]
         prefix = prefix
@@ -1180,7 +1180,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     self.cache[prefix] = '%s@%s' % (ident,host)
                 elif not prefix in i.resolving:
                     i.resolving[prefix] = True
-                    t = world.SupyThread(target=self.resolve,name=format('resolve %s', prefix),args=(irc,prefix,channel,dnsbl))
+                    t = world.SupyThread(target=self.resolve,name=format('resolve %s', prefix),args=(irc,prefix,channel,dnsbl,comment))
                     t.setDaemon(True)
                     t.start()
                     return '%s@%s' % (ident,host)
@@ -1359,6 +1359,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG ChanServ :OP %s' % target))
                     if target == self.registryValue('mainChannel'):
                         self.opStaffers(irc)
+#                elif mode == '-z':
+#                    if not target == self.registryValue('mainChannel'):
+#                        if irc.nick in list(irc.state.channels[target].ops):
+#                            irc.queueMsg(ircmsgs.IrcMsg('MODE %s -o %s' % (target,irc.nick))
                 elif mode == '+b' or mode == '+q':
                     if ircutils.isUserHostmask(value):
                         mask = self.prefixToMask(irc,value)
@@ -2237,6 +2241,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def handleSecretMessage (self,irc,msg):
         (targets, text) = msg.args
         nicks = ['OperServ']
+        i = self.getIrc(irc)
         if msg.nick in nicks:
             if text.startswith('klinechan_check_join(): klining '):
                 patterns = self.registryValue('droneblPatterns')
@@ -2270,6 +2275,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                pattern = r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
                result = re.search(pattern,text)
                email = text.split('<')[1].split('>')[0]
+               if i.defcon:
+                   nick = text.split('email for ')[1].split('[')[0]
+                   u = email.split('@')[0]
+                   d = email.split('@')[1].replace('.com','')
+                   if nick == d and nick == u:
+                        h = text.split('email for ')[1].split(']')[0].strip().replace('[','!')
+                        m = self.prefixToMask(irc,h)
+                        self.ban(irc,nick,h,m,self.registryValue('klineDuration'),'register %s@%s.com' % (nick,nick),self.registryValue('klineMessage'),'register %s@%s.com' % (nick,nick))
                if result:
                    ip = result.group(0)
                    if ip and 'type register to' in text:
@@ -2379,19 +2392,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         a = text.split('Killing client ')[1]
                         a = a.split(')')[0]
                         ip = a.split('@')[1]
-                        dronebled = False
-                        for m in queue:
-                            if ip in m:
-                                dronebled = True
-                                break
-                        if not dronebled:
-                            if utils.net.isIPV4(ip):
-                                if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
-                                    t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),found))
-                                    t.setDaemon(True)
-                                    t.start()
-                            else:
-                                self.prefixToMask(irc,'*!*@%s' % ip,'',True)
+                        if utils.net.isIPV4(ip):
+                            if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                                t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),found))
+                                t.setDaemon(True)
+                                t.start()
+                        else:
+                            self.prefixToMask(irc,'*!*@%s' % ip,'',True,found)
 
     def doPrivmsg (self,irc,msg):
         self.handleMsg(irc,msg,False)
@@ -2852,7 +2859,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             t.setDaemon(True)
                             t.start()
                     else:
-                        self.prefixToMask(irc,'*!*@%s' % ip,'',True)
+                        self.prefixToMask(irc,'*!*@%s' % ip,'',True,reason)
             elif 'failed login attempts to' in text and 'SASL' in text:
                 self.handleSaslFailure(irc,text)
         else:
