@@ -43,6 +43,7 @@ import threading
 import dns.resolver
 import json
 import ipaddress
+import random
 import supybot.log as log
 import supybot.conf as conf
 import supybot.utils as utils
@@ -463,25 +464,27 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if len(self.rmDnsblQueue) > 0:
                 item = self.rmDnsblQueue.pop()
                 self.removeDnsbl(item[0],item[1],item[2],item[3])
-            if answer.find('listed="1"') != -1:
-                if answer.find('type="18"') != -1:
-                    return
-            id = answer.split('id="')[1]
-            id = id.split('"')[0]
-            add = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><remove id='"+id+"' /></request>"
-            type, uri = urllib.splittype(droneblHost)
-            host, handler = urllib.splithost(uri)
-            connection = httplib.HTTPConnection(host)
-            connection.putrequest("POST",handler)
-            connection.putheader("Content-Type", "text/xml")
-            connection.putheader("Content-Length", str(int(len(add))))
-            connection.endheaders()
-            connection.send(add)
-            response = connection.getresponse().read().replace('\n','')
-            if "You are not authorized to remove this incident" in response:
-                self.logChannel(irc,'RMDNSBL: You are not authorized to remove this incident %s (%s)' % (ip,id))
-            else:
-                self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,id))
+            for line in answer.split('\n'):
+                if line.find('listed="1"') != -1:
+                    if line.find('type="18"') != -1:
+                        self.logChannel(irc,'RMDNSBL: %s type 18 found, not removed.' % ip)
+                        continue
+                    id = line.split('id="')[1]
+                    id = id.split('"')[0]
+                    add = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><remove id='"+id+"' /></request>"
+                    type, uri = urllib.splittype(droneblHost)
+                    host, handler = urllib.splithost(uri)
+                    connection = httplib.HTTPConnection(host)
+                    connection.putrequest("POST",handler)
+                    connection.putheader("Content-Type", "text/xml")
+                    connection.putheader("Content-Length", str(int(len(add))))
+                    connection.endheaders()
+                    connection.send(add)
+                    response = connection.getresponse().read().replace('\n','')
+                    if "You are not authorized to remove this incident" in response:
+                        self.logChannel(irc,'RMDNSBL: You are not authorized to remove this incident %s (%s)' % (ip,id))
+                    else:
+                        self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,id))
         if len(self.rmDnsblQueue) == 0 and not self.pendingRmDnsbl:
             request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
             type, uri = urllib.splittype(droneblHost)
@@ -1771,16 +1774,18 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        channel = []
                        for t in q:
                            channel.append(t)
-                       self.kline(irc,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask'],self.registryValue('klineDuration'),'!dnsbl bottish creation %s' % ','.join(channel))
-                       self.logChannel(irc,'BAD: [%s] %s (bottish creation) -> %s' % (','.join(channel),i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask']))
+                       uid = random.randint(0,1000000)
+                       self.kline(irc,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask'],self.registryValue('klineDuration'),'%s - !dnsbl bottish creation %s' % (uid,','.join(channel)))
+                       self.logChannel(irc,'BAD: [%s] %s (bottish creation - %s)' % (','.join(channel),i.toklineresults[nick]['hostmask'],uid))
            elif i.toklineresults[nick]['kind'] == 'lethal':
                if not 'account' in i.toklineresults[nick] and 'signon' in i.toklineresults[nick]:
                    if time.time() - i.toklineresults[nick]['signon'] < self.registryValue('alertPeriod') and not 'gateway/' in i.toklineresults[nick]['hostmask'] and not isCloaked(i.toklineresults[nick]['hostmask'],self):
                        channel = '#%s' % i.tokline[nick].split('#')[1]
                        if '##' in i.tokline[nick]:
                            channel = '##%s' % i.tokline[nick].split('##')[1]
-                       self.kline(irc,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask'],self.registryValue('klineDuration'),'lethal creation %s' % channel)
-                       self.logChannel(irc,'BAD: [%s] %s (lethal creation) -> %s' % (channel,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask']))
+                       uid = random.randint(0,1000000)
+                       self.kline(irc,i.toklineresults[nick]['hostmask'],i.toklineresults[nick]['mask'],self.registryValue('klineDuration'),'%s - lethal creation %s' % (uid,channel))
+                       self.logChannel(irc,'BAD: [%s] %s (lethal creation - %s)' % (channel,i.toklineresults[nick]['hostmask'],uid))
            del i.tokline[nick]
            del i.toklineresults[nick]
 
@@ -1982,8 +1987,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if pattern.match(raw):
                         if pattern.limit == 0:
                             isBanned = True
-                            reason = 'matches #%s in %s' % (pattern.uid,channel)
-                            log = 'BAD: [%s] %s (matches #%s) -> %s' % (channel,msg.prefix,pattern.uid,mask)
+                            uid = random.randint(0,1000000)
+                            reason = '%s - matches #%s in %s' % (uid,pattern.uid,channel)
+                            log = 'BAD: [%s] %s (matches #%s - %s)' % (channel,msg.prefix,pattern.uid,uid)
                             self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                             i.count(self.getDb(irc.network),pattern.uid)
                             chan.klines.enqueue('%s %s' % (msg.nick.lower(),mask))
@@ -1995,8 +2001,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             queue.enqueue(text)
                             if len(queue) > pattern.limit:
                                 isBanned = True
-                                reason = 'matches #%s (%s/%ss) in %s' % (pattern.uid,pattern.limit,pattern.life,channel)
-                                log = 'BAD: [%s] %s (matches #%s %s/%ss) -> %s' % (channel,msg.prefix,pattern.uid,pattern.limit,pattern.life,mask)
+                                uid = random.randint(0,1000000)
+                                reason = '%s - matches #%s (%s/%ss) in %s' % (uid,pattern.uid,pattern.limit,pattern.life,channel)
+                                log = 'BAD: [%s] %s (matches #%s %s/%ss - %s)' % (channel,msg.prefix,pattern.uid,pattern.limit,pattern.life,uid)
                                 self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                                 self.rmIrcQueueFor(irc,mask)
                                 i.count(self.getDb(irc.network),pattern.uid)
@@ -2144,9 +2151,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         bypassIgnore = self.isBadOnChannel(irc,channel,'bypassIgnore',mask)
                         if bypassIgnore:
                             isBanned = True
+                            uid = random.randint(0,1000000)
                             reason = '%s %s' % (reason,bypassIgnore)
-                            log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
+                            log = 'BAD: [%s] %s (%s - %s)' % (channel,msg.prefix,reason,mask,uid)
                             chan.klines.enqueue('%s %s' % (msg.nick.lower(),mask))
+                            reason = '%s - %s' % (uid,reason)
                             self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                             self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                             if i.defcon:
@@ -2161,8 +2170,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     irc.queueMsg(ircmsgs.notice(msg.nick,"Your actions in %s tripped automated anti-spam measures (%s), but were ignored based on your time in channel; stop now, or automated action will still be taken. If you have any questions, please don't hesitate to contact a member of staff" % (channel,publicreason)))
                     else:
                         isBanned = True
-                        log = 'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask)
+                        uid = random.randint(0,1000000)
+                        log = 'BAD: [%s] %s (%s - %s)' % (channel,msg.prefix,reason,uid)
                         chan.klines.enqueue('%s %s' % (msg.nick.lower(),mask))
+                        reason = '%s - %s' % (uid,reason)
                         self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                         if i.defcon:
                             i.defcon = time.time()
@@ -2282,7 +2293,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                    if nick == d and nick == u:
                         h = text.split('email for ')[1].split(']')[0].strip().replace('[','!')
                         m = self.prefixToMask(irc,h)
-                        self.ban(irc,nick,h,m,self.registryValue('klineDuration'),'register %s@%s.com' % (nick,nick),self.registryValue('klineMessage'),'register %s@%s.com' % (nick,nick))
+                        uid = random.randint(0,1000000)
+                        self.ban(irc,nick,h,m,self.registryValue('klineDuration'),'%s - register %s@%s.com' % (uid,nick,nick),self.registryValue('klineMessage'),'BAD: %s register %s@%s.com - %s' % (h,nick,nick,uid))
                if result:
                    ip = result.group(0)
                    if ip and 'type register to' in text:
@@ -2416,8 +2428,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         pattern = i.patterns[k]
                         if pattern.match(text):
                             if pattern.limit == 0:
-                                reason = 'matches #%s in pm' % (pattern.uid)
-                                log = 'BAD: [%s] %s (matches #%s) -> %s' % (channel,msg.prefix,pattern.uid,mask)
+                                uid = random.randint(0,1000000)
+                                reason = '%s - matches #%s in pm' % (pattern.uid,uid)
+                                log = 'BAD: [%s] %s (matches #%s - %s)' % (channel,msg.prefix,pattern.uid,uid)
                                 self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                                 i.count(self.getDb(irc.network),pattern.uid)
                                 break
@@ -2425,8 +2438,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 queue = self.getIrcQueueFor(irc,mask,pattern.uid,pattern.life)
                                 queue.enqueue(text)
                                 if len(queue) > pattern.limit:
-                                    reason = 'matches #%s (%s/%ss) in pm' % (pattern.uid,pattern.limit,pattern.life)
-                                    log = 'BAD: [%s] %s (matches #%s %s/%ss) -> %s' % (channel,msg.prefix,pattern.uid,pattern.limit,pattern.life,mask)
+                                    uid = random.randint(0,1000000)
+                                    reason = '%s - matches #%s (%s/%ss) in pm' % (pattern.uid,pattern.limit,pattern.life,uid)
+                                    log = 'BAD: [%s] %s (matches #%s %s/%ss - %s)' % (channel,msg.prefix,pattern.uid,pattern.limit,pattern.life,uid)
                                     self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
                                     self.rmIrcQueueFor(irc,mask)
                                     i.count(self.getDb(irc.network),pattern.uid)
@@ -2509,13 +2523,16 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 users = list(queue)
                 if len(queue) > limit:
                     queue.reset()
-                    if i.defcon:
+                    queue = self.getIrcQueueFor(irc,target,'snoteFloodLethal',life)
+                    queue.enqueue(','.join(users))
+                    if i.defcon or len(queue) > 1:
                         for m in queue:
                             for q in m.split(','):
                                 if not ircdb.checkCapability(q, 'protected'):
                                     mask = self.prefixToMask(irc,q)
-                                    self.kline(irc,q,mask,self.registryValue('klineDuration'),'snote flood on %s' % target)
-                                    self.logChannel(irc,"BAD: %s (snote flood on %s) -> %s" % (q,target,mask))
+                                    uid = random.randint(0,1000000)
+                                    self.kline(irc,q,mask,self.registryValue('klineDuration'),'%s - snote flood on %s' % (uid,target))
+                                    self.logChannel(irc,"BAD: %s (snote flood on %s - %s)" % (q,target,uid))
                     else:
                         self.logChannel(irc,'NOTE: %s is flooded by %s' % (target,', '.join(users)))
                 # someone is flooding nicks
@@ -2532,10 +2549,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if len(queue) > limit:
                     targets = list(queue)
                     queue.reset()
-                    if i.defcon:
+                    queue = self.getIrcQueueFor(irc,user,'snoteFloodLethal',life)
+                    queue.enqueue(target)
+                    if i.defcon or len(queue) > 1:
                          mask = self.prefixToMask(irc,user)
-                         self.kline(irc,user,mask,self.registryValue('klineDuration'),'snote flood %s' % (','.join(targets)))
-                         self.logChannel(irc,"BAD: %s (snote flood %s) -> %s" % (user,','.join(targets),mask))
+                         uid = random.randint(0,1000000)
+                         self.kline(irc,user,mask,self.registryValue('klineDuration'),'%s - snote flood %s' % (uid,','.join(targets)))
+                         self.logChannel(irc,"BAD: %s (snote flood %s - %s)" % (user,','.join(targets),uid))
                     else:
                         self.logChannel(irc,'NOTE: %s is flooding %s' % (user,', '.join(targets)))
 
@@ -2635,8 +2655,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             mask = self.prefixToMask(irc,user)
             (nick,ident,host) = ircutils.splitHostmask(user)
             if not mask in i.klines:
-                self.kline(irc,user,mask,self.registryValue('klineDuration'),'ns id flood (%s)' % ', '.join(a))
-                self.logChannel(irc,"BAD: %s (ns id flood %s) -> %s" % (user,', '.join(a),mask))
+                uid = random.randint(0,1000000)
+                self.kline(irc,user,mask,self.registryValue('klineDuration'),'%s - ns id flood (%s)' % (uid,', '.join(a)))
+                self.logChannel(irc,"BAD: %s (ns id flood %s - %s)" % (user,', '.join(a),uid))
                 if i.defcon and utils.net.isIPV4(mask.split('@')[1]):
                     if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
                         t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', mask.split('@')[1]),args=(irc,mask.split('@')[1],self.registryValue('droneblHost'),self.registryValue('droneblKey'),'ns id flood (%s)' % ','.join(a)))
@@ -2669,8 +2690,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 (nick,ident,host) = ircutils.splitHostmask(u)
                 if not mask in i.klines:
                     self.kill(irc,nick,u)
-                    self.kline(irc,u,mask,self.registryValue('klineDuration'),'ns id flood on %s' % target)
-                    self.logChannel(irc,"BAD: %s (ns id flood on %s) -> %s" % (u,target,mask))
+                    uid = random.randint(0,1000000)
+                    self.kline(irc,u,mask,self.registryValue('klineDuration'),'%s - ns id flood on %s' % (uid,target))
+                    self.logChannel(irc,"BAD: %s (ns id flood on %s - %s)" % (u,target,uid))
                     if i.defcon and utils.net.isIPV4(mask.split('@')[1]):
                         if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
                             t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', mask.split('@')[1]),args=(irc,mask.split('@')[1],self.registryValue('droneblHost'),self.registryValue('droneblKey'),'ns id flood on %s' % target))
@@ -2732,8 +2754,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if len(queue) > limit:
             nicks = list(queue)
             queue.reset()
-            self.kline(irc,'%s!%s' % (nick,host),mask,self.registryValue('klineDuration'),'nick changes abuses %s/%ss' % (limit,life))
-            self.logChannel(irc,"BAD: %s abuses nick change (%s) -> %s" % (mask,','.join(nicks),mask))
+            uid = random.randint(0,1000000)
+            self.kline(irc,'%s!%s' % (nick,host),mask,self.registryValue('klineDuration'),'%s - nick changes abuses %s/%ss' % (uid,limit,life))
+            self.logChannel(irc,"BAD: %s abuses nick change (%s - %s)" % (mask,','.join(nicks),uid))
 
     def handleChannelCreation (self,irc,text):
         text = text.replace(' is creating new channel ','')
@@ -3350,8 +3373,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                            break
                     if len(msg.nick) > self.registryValue('wordMinimum') and found and not isCloaked(msg.prefix,self) and not 'gateway/' in msg.prefix and not account:
                         self.kill(irc,msg.nick,self.registryValue('killMessage',channel=channel))
-                        self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'badwords in %s - %s' % (channel,found))
-                        self.logChannel(irc,'BAD: [%s] %s (badword %s) -> %s' % (channel,found,msg.prefix,mask))
+                        uid = random.randint(0,1000000)
+                        self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'%s - badwords in %s - %s' % (uid,channel,found))
+                        self.logChannel(irc,'BAD: [%s] %s (badword %s - %s)' % (channel,found,msg.prefix,uid))
                         self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                         del chan.nicks[msg.nick]
                         continue
@@ -3472,8 +3496,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         bad = self.isBadOnChannel(irc,channel,'cycle',mask)
                     if bad:
                         isBanned = True
-                        log = "BAD: [%s] %s (join/part) -> %s" % (channel,msg.prefix,mask)
-                        comment = 'join/part flood in %s' % channel
+                        uid = random.randint(0,1000000)
+                        log = "BAD: [%s] %s (join/part - %s)" % (channel,msg.prefix,uid)
+                        comment = '%s - join/part flood in %s' % (uid,channel)
                         self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),comment,self.registryValue('klineMessage'),log)
                         self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                     if len(reason) and not reason.startswith('Kicked by @appservice-irc:matrix.org') and not reason.startswith('requested by'):
@@ -3494,12 +3519,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 if kind in chan.buffers and key in chan.buffers[kind] and len(chan.buffers[kind][key]) == limit and msg.nick in chan.nicks and time.time() - chan.nicks[msg.nick][0] < life:
                                     self.isAbuseOnChannel(irc,channel,'joinSpamPart',mask)
                                     if self.hasAbuseOnChannel(irc,channel,'joinSpamPart'):
+                                        uid = random.randint(0,1000000)
                                         reason = '(%s/%ss joinSpamPart)' % (limit,life)
-                                        klinereason = reason
+                                        klinereason = '%s - %s' % (uid,reason)
                                         if i.defcon:
-                                            klinereason = '!dnsbl %s' % reason
+                                            klinereason = '%s !dnsbl' % reason
                                         self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),klinereason)
-                                        self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask))
+                                        self.logChannel(irc,'BAD: [%s] %s (%s - %s)' % (channel,msg.prefix,reason,uid))
                                         isBanned = True
                                         chan.buffers[kind][key].reset()
                                         continue
@@ -3556,8 +3582,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if isBanned:
                         continue
                     if bad and not i.netsplit:
-                        self.kline(irc,msg.prefix,mask,self.registryValue('brokenDuration'),'%s in %s' % ('join/quit flood',channel),self.registryValue('brokenReason') % self.registryValue('brokenDuration'))
-                        self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,'broken client',mask))
+                        uid = random.randint(0,1000000)
+                        self.kline(irc,msg.prefix,mask,self.registryValue('brokenDuration'),'%s - %s in %s' % (uid,'join/quit flood',channel),self.registryValue('brokenReason') % self.registryValue('brokenDuration'))
+                        self.logChannel(irc,'BAD: [%s] %s (%s - %s)' % (channel,msg.prefix,'broken client',uid))
                         isBanned = True
                         continue
                     flag = ircdb.makeChannelCapability(channel, 'joinSpamPart')
@@ -3570,12 +3597,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             if kind in chan.buffers and key in chan.buffers[kind] and len(chan.buffers[kind][key]) == limit and msg.nick in chan.nicks and time.time() - chan.nicks[msg.nick][0] < life:
                                 self.isAbuseOnChannel(irc,channel,'joinSpamPart',mask)
                                 if self.hasAbuseOnChannel(irc,channel,'joinSpamPart'):
+                                    uid = random.randint(0,1000000)
                                     reason = '(%s/%ss joinSpamPart)' % (limit,life)
-                                    klinereason = reason
+                                    klinereason = '%s - %s' % (uid,reason)
                                     if i.defcon:
-                                        klinereason = '!dnsbl %s' % reason
+                                        klinereason = '%s !dnsbl' % reason
                                     self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),klinereason)
-                                    self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,reason,mask))
+                                    self.logChannel(irc,'BAD: [%s] %s (%s) - %s)' % (channel,msg.prefix,reasonuid))
                                     isBanned = True
                                     chan.buffers[kind][key].reset()
                                     continue
@@ -3596,8 +3624,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             account = chan.nicks[msg.nick][4]
                             if not account and gecos == msg.nick and gecos in ident and len(msg.nick) < 6:
                                 isBanned = True
-                                self.kline(irc,msg.prefix,mask,self.registryValue('brokenDuration')*4,'%s in %s' % ('join/quit flood',channel),self.registryValue('brokenReason') % (self.registryValue('brokenDuration')*4))
-                                self.logChannel(irc,'BAD: [%s] %s (%s) -> %s' % (channel,msg.prefix,'broken bottish client',mask))
+                                uid = random.randint(0,1000000)
+                                self.kline(irc,msg.prefix,mask,self.registryValue('brokenDuration')*4,'%s - %s in %s' % (uid,'join/quit flood',channel),self.registryValue('brokenReason') % (self.registryValue('brokenDuration')*4))
+                                self.logChannel(irc,'BAD: [%s] %s (%s - %s)' % (channel,msg.prefix,'broken bottish client',uid))
 
     def doNick (self,irc,msg):
         oldNick = msg.prefix.split('!')[0]
@@ -3642,16 +3671,18 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 if hasBeenIgnored:
                                     bypass = self.isBadOnChannel(irc,channel,'bypassIgnore',mask)
                                     if bypass:
+                                        uid = random.randint(0,1000000)
                                         comment = '%s %s' % (reason,bypass)
-                                        log = 'BAD: [%s] %s (%s) -> %s' % (channel,newPrefix,comment,mask)
-                                        self.ban(irc,newNick,newPrefix,mask,self.registryValue('klineDuration'),comment,self.registryValue('klineMessage'),log)
+                                        log = 'BAD: [%s] %s (%s - %s)' % (channel,newPrefix,comment,uid)
+                                        self.ban(irc,newNick,newPrefix,mask,self.registryValue('klineDuration'),'%s - %s' % (uid,comment),self.registryValue('klineMessage'),log)
                                         self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                                         isBanned = True
                                     else:
                                         self.logChannel(irc,'IGNORED: [%s] %s (%s)' % (channel,newPrefix,reason))
                                 else:
-                                    log = 'BAD: [%s] %s (%s) -> %s' % (channel,newPrefix,reason,mask)
-                                    self.ban(irc,newNick,newPrefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log)
+                                    uid = random.randint(0,1000000)
+                                    log = 'BAD: [%s] %s (%s - %s)' % (channel,newPrefix,reason,uid)
+                                    self.ban(irc,newNick,newPrefix,mask,self.registryValue('klineDuration'),'%s - %s' % (uid,reason),self.registryValue('klineMessage'),log)
                                     self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                                     isBanned = True
                     del chan.nicks[oldNick]
