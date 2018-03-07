@@ -137,6 +137,9 @@ conf.registerGlobalValue(Sigyn, 'ipv4AbuseLife',
 conf.registerGlobalValue(Sigyn, 'useWhoWas',
      registry.Boolean(False, """use whowas for resolving ip"""))
 
+conf.registerGlobalValue(Sigyn, 'useOperServ',
+     registry.Boolean(False, """use OperServ AKILL instead of KLINE"""))
+
 conf.registerGlobalValue(Sigyn,'msgInviteConfirm',
      registry.String("Your request has been submitted to freenode staff.","""sent to op who requested /invite"""))
 
@@ -144,7 +147,7 @@ conf.registerGlobalValue(Sigyn,'msgTooManyGhost',
      registry.String("Banned due to too many connections in a short period, email kline@freenode.net when corrected.","""sent to op who requested /invite"""))
 
 conf.registerGlobalValue(Sigyn,'staffCloak',
-     registry.String("freenode/staff","""used to identify staffers"""))
+     registry.String("freenode/staff/","""used to identify staffers"""))
 
 # to fight some specific spambot
 conf.registerGlobalValue(Sigyn, 'channelCreationPermit',

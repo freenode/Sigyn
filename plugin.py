@@ -1008,7 +1008,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                           self.logChannel(irc,'OP: [%s] %s asked for removal of %s (%s)' % (channel,msg.nick,ip,nick))
                           channels.append(channel)
                           if not isCloaked('%s!%s' % (nick,ip),self):
-                              irc.queueMsg(ircmsgs.IrcMsg('UNKLINE %s' % ip))
+                              if self.registryValue('useOperServ'):
+                                  irc.sendMsg(ircmsgs.IrcMsg('PRIVMSG OperServ :DEL %s' % ip))
+                              else:
+                                  irc.queueMsg(ircmsgs.IrcMsg('UNKLINE %s' % ip))
                               if self.registryValue('clearTmpPatternOnUnkline',channel=channel):
                                   if chan.patterns and len(chan.patterns):
                                       self.logChannel(irc,'PATTERN: [%s] removed %s tmp pattern by %s' % (channel,len(chan.patterns),msg.nick))
@@ -1470,7 +1473,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             ## todo lookups in chan.klines and find the cloak associated with the kline and replace it
             ## q.queue._P__slots__ probably
             self.log.info('KLINE %s|%s' % (mask,pending[3]))
-            irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (pending[2],mask,pending[4],pending[3])))
+            if self.registryValue('useOperServ'):
+                irc.sendMsg(ircmsgs.IrcMsg('PRIVMSG OperServ :ADD %s !T %s %s' % (mask,pending[2],pending[3])))
+            else:
+                irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (pending[2],mask,pending[4],pending[3])))
             for channel in irc.state.channels:
                 chan = self.getChan(irc,channel)
                 if len(chan.klines):
@@ -1507,7 +1513,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.logChannel(irc,"INFO: disabled, can't kline %s (%s)" % (mask,reason))
             else:
                 self.log.info('KLINE %s|%s' % (mask,reason))
-                irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (duration,mask,klineMessage,reason)))
+                if self.registryValue('useOperServ'):
+                    irc.sendMsg(ircmsgs.IrcMsg('PRIVMSG OperServ :ADD %s !T %s %s' % (mask,duration,reason)))
+                else:
+                    irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (duration,mask,klineMessage,reason)))
                 if i.defcon:
                     i.defcon = time.time()
         elif ircutils.isUserHostmask(prefix):
@@ -2867,8 +2876,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             for m in q:
                                 hs.append(m)
                             q.reset()
-                            irc.sendMsg(ircmsgs.IrcMsg('KLINE %s *@%s :%s|%s' % (self.registryValue('klineDuration'),range,self.registryValue('klineMessage'),'repeat abuses on this range (%s/%ss)' % (permit,self.registryValue('ipv4AbuseLife')))))
-                            self.logChannel(irc,"NOTE: abuses detected on %s (%s/%ss) %s" % (range,permit,self.registryValue('ipv4AbuseLife'),','.join(hs)))
+                            uid = random.randint(0,1000000)
+                            if self.registryValue('useOperServ'):
+                                irc.sendMsg(ircmsgs.IrcMsg('PRIVMSG OperServ :ADD %s !T %s %s' % (range,self.registryValue('klineDuration'),'%s - repeat abuses on this range (%s/%ss)' % (uid,permit,self.registryValue('ipv4AbuseLife')))))
+                            else:
+                                irc.sendMsg(ircmsgs.IrcMsg('KLINE %s *@%s :%s|%s' % (self.registryValue('klineDuration'),range,self.registryValue('klineMessage'),'%s - repeat abuses on this range (%s/%ss)' % (uid,permit,self.registryValue('ipv4AbuseLife')))))
+                            self.logChannel(irc,"BAD: abuses detected on %s (%s/%ss - %s) %s" % (range,permit,self.registryValue('ipv4AbuseLife'),uid,','.join(hs)))
                         permit = permit + 1
                 if '!dnsbl' in text or hasPattern:
                     reason = ''
