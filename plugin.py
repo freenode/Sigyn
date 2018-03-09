@@ -2162,7 +2162,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             isBanned = True
                             uid = random.randint(0,1000000)
                             reason = '%s %s' % (reason,bypassIgnore)
-                            log = 'BAD: [%s] %s (%s - %s)' % (channel,msg.prefix,reason,mask,uid)
+                            log = 'BAD: [%s] %s (%s - %s)' % (channel,msg.prefix,reason,uid)
                             chan.klines.enqueue('%s %s' % (msg.nick.lower(),mask))
                             reason = '%s - %s' % (uid,reason)
                             self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),reason,self.registryValue('klineMessage'),log,killReason)
