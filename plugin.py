@@ -1843,7 +1843,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             else:
                 self.logChannel(irc,"INVITE: [%s] by %s denied (%s users)" % (msg.args[1],i.invites[msg.args[1]],msg.args[2]))
                 (nick,ident,host) = ircutils.splitHostmask(i.invites[msg.args[1]])
-                irc.queueMsg(ircmsgs.privmsg(nick,'Invitation denied, there are only %s users in %s: contact staffers if needed.' % (msg.args[2],msg.args[1])))
+                irc.queueMsg(ircmsgs.privmsg(nick,'Invitation denied, there are only %s users in %s (%s minimum for %s): contact staffers if needed.' % (msg.args[2],msg.args[1],self.registryValue('minimumUsersInChannel'),irc.nick)))
             del i.invites[msg.args[1]]
 
     def resolveSnoopy (self,irc,account,email,badmail):
@@ -2581,9 +2581,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             return
         user = text.split('User ')[1].split(')')[0]
         user = user.replace('(','!').replace(')','').replace(' ','')
-        mask = self.prefixToMask(irc,user)
         if not ircutils.isUserHostmask(user):
             return
+        mask = self.prefixToMask(irc,user)
         if ircdb.checkCapability(user, 'protected'):
             return
         protected = ircdb.makeChannelCapability(target, 'protected')
@@ -2799,7 +2799,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 break
         if not found:
             q.enqueue(channel)
-            self.log.debug('%s :: %s (%s/%s)' % (user,channel,len(q),permit))
         if len(q) == permit and i.defcon:
             found = False
             found2 = False
