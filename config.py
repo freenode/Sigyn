@@ -313,6 +313,15 @@ conf.registerChannelValue(Sigyn, 'lowFloodPermit',
 conf.registerChannelValue(Sigyn, 'lowFloodLife',
     registry.PositiveInteger(1,"""life duration of message in the lowFlood buffer detection"""))
 
+conf.registerChannelValue(Sigyn, 'capPermit',
+    registry.Integer(-1,"""number of uppercase messages allowed, -1 to disable"""))
+conf.registerChannelValue(Sigyn, 'capLife',
+    registry.PositiveInteger(1,"""life duration of message in the uppercase buffer detection"""))
+conf.registerChannelValue(Sigyn, 'capPercent',
+    registry.PositiveInteger(80,"""percent of the message in uppercase"""))
+conf.registerChannelValue(Sigyn, 'capMinimum',
+    registry.PositiveInteger(1,"""minimun number of chars to enter cap detection"""))
+
 conf.registerChannelValue(Sigyn, 'repeatPermit',
     registry.Integer(-1,"""number of repeated trigger allowed during repeatLife, -1 to disable"""))
 conf.registerChannelValue(Sigyn, 'repeatLife',
@@ -344,11 +353,12 @@ conf.registerChannelValue(Sigyn, 'massRepeatPercent',
 conf.registerChannelValue(Sigyn, 'massRepeatMinimum',
     registry.PositiveInteger(1,"""minimum number of chars to enter massRepeat detection"""))
 
-
 conf.registerChannelValue(Sigyn, 'joinSpamPartPermit',
     registry.Integer(-1,"""number of messages before leaving channel, -1 to disable"""))
 conf.registerChannelValue(Sigyn, 'joinSpamPartLife',
     registry.PositiveInteger(1,"""duration in seconds of user presence in channel"""))
+
+
 
 conf.registerChannelValue(Sigyn, 'computedPattern',
     registry.Integer(-1,"""minimun number of chars needed to keep it as a spam pattern, -1 to disable"""))
