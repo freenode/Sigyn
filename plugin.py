@@ -2572,7 +2572,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if i.defcon or len(queue) > 1:
                         for m in queue:
                             for q in m.split(','):
-                                if not ircdb.checkCapability(q, 'protected'):
+                                if not (ircdb.checkCapability(q, 'protected') or target == 'freenode-connect'):
                                     mask = self.prefixToMask(irc,q)
                                     uid = random.randint(0,1000000)
                                     self.kline(irc,q,mask,self.registryValue('klineDuration'),'%s - snote flood on %s' % (uid,target))
