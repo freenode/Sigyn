@@ -2334,14 +2334,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                result = re.search(pattern,text)
                email = text.split('<')[1].split('>')[0]
                h = text.split('email for ')[1].split(']')[0].strip().replace('[','!')
-               if i.defcon:
-                   nick = text.split('email for ')[1].split('[')[0]
-                   u = email.split('@')[0]
-                   d = email.split('@')[1].replace('.com','')
-                   if nick == d and nick == u:
-                        m = self.prefixToMask(irc,h)
-                        uid = random.randint(0,1000000)
-                        self.ban(irc,nick,h,m,self.registryValue('klineDuration'),'%s - register %s@%s.com' % (uid,nick,nick),self.registryValue('klineMessage'),'BAD: %s register %s@%s.com - %s' % (h,nick,nick,uid))
                if result:
                    ip = result.group(0)
                    if ip and 'type register to' in text:
