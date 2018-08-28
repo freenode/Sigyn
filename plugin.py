@@ -359,6 +359,7 @@ class Pattern (object):
             if self._match:
                 s = self._match.search (text) != None
             else:
+                text = text.lower()
                 s = self.pattern in text
         except:
             s = False
