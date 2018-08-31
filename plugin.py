@@ -31,7 +31,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 ###
-
+# coding: utf-8
 import os
 import re
 import sys
@@ -57,7 +57,8 @@ import supybot.ircutils as ircutils
 import supybot.callbacks as callbacks
 import supybot.schedule as schedule
 import supybot.registry as registry
-
+reload(sys)
+sys.setdefaultencoding('UTF8')
 try:
     from supybot.i18n import PluginInternationalization
     _ = PluginInternationalization('Sigyn')
@@ -1952,7 +1953,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if ircmsgs.isAction(msg):
             text = ircmsgs.unAction(msg)
         raw = ircutils.stripColor(text)
-        raw = unicode(raw, "utf-8", errors="ignore")
+        #raw = unicode(raw, "utf-8", errors="ignore")
         text = raw.lower()
         mask = self.prefixToMask(irc,msg.prefix)
         i = self.getIrc(irc)
