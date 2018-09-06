@@ -1,5 +1,4 @@
 #!/usr/bin/env/python
-#
 # -*- coding: utf-8 -*-
 
 ###
@@ -336,7 +335,7 @@ class Chan (object):
         self.logs = {}
         self.nicks = {}
         self.called = False
-        self.klines = utils.structures.TimeoutQueue(900)
+        self.klines = utils.structures.TimeoutQueue(1800)
         self.requestedBySpam = False
 
     def __repr__(self):
@@ -356,14 +355,14 @@ class Pattern (object):
 
     def match (self,text):
         s = False
-        try:
-            if self._match:
-                s = self._match.search (text) != None
-            else:
-                text = text.lower()
-                s = self.pattern in text
-        except:
-            s = False
+        #try:
+        if self._match:
+            s = self._match.search (text) != None
+        else:
+            text = text.lower()
+            s = self.pattern in text
+        #except:
+        #    s = False
         return s
     def __repr__(self):
         return '%s(uid=%r, pattern=%r, limit=%r, life=%r, _match=%r)' % (self.__class__.__name__,
@@ -390,7 +389,156 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.collecting = False
         self.starting = world.starting
         self.recaps = re.compile("[A-Z]")
-
+        self.asciitable = {}
+        hashs = {}
+        chars = 'AΑАᎪᗅᴀ𝐀𝐴𝑨𝒜𝓐𝔄𝔸𝕬𝖠𝗔𝘈𝘼𝙰𝚨𝛢𝜜𝝖𝞐'
+        for k in chars:
+            hashs[k] = 'A'
+        chars = 'BʙΒВвᏴᗷᛒℬ𐌁𝐁𝐵𝑩𝓑𝔅𝔹𝕭𝖡𝗕𝘉𝘽𝙱𝚩𝛣𝜝𝝗𝞑'
+        for k in chars:
+            hashs[k] = 'B'
+        chars = 'CϹСᏟℂℭⅭⲤ𐌂𝐂𝐶𝑪𝒞𝓒𝕮𝖢𝗖𝘊𝘾𝙲'
+        for k in chars:
+            hashs[k] = 'C'
+        chars = 'DᎠᗞᗪᴅⅅⅮ𝐃𝐷𝑫𝒟𝓓𝔇𝔻𝕯𝖣𝗗𝘋𝘿𝙳'
+        for k in chars:
+            hashs[k] = 'D'
+        chars = 'EΕЕᎬᴇℰ⋿ⴹ𝐄𝐸𝑬𝓔𝔈𝔼𝕰𝖤𝗘𝘌𝙀𝙴𝚬𝛦𝜠𝝚𝞔'
+        for k in chars:
+            hashs[k] = 'E'
+        chars = 'FϜᖴℱ𝐅𝐹𝑭𝓕𝔉𝔽𝕱𝖥𝗙𝘍𝙁𝙵𝟊'
+        for k in chars:
+            hashs[k] = 'F'
+        chars = 'GɢԌԍᏀᏳ𝐆𝐺𝑮𝒢𝓖𝔊𝔾𝕲𝖦𝗚𝘎𝙂𝙶'
+        for k in chars:
+            hashs[k] = 'G'
+        chars = 'HʜΗНнᎻᕼℋℌℍⲎ𝐇𝐻𝑯𝓗𝕳𝖧𝗛𝘏𝙃𝙷𝚮𝛨𝜢𝝜𝞖'
+        for k in chars:
+            hashs[k] = 'H'
+        chars = 'JЈᎫᒍᴊ𝐉𝐽𝑱𝒥𝓙𝔍𝕁𝕵𝖩𝗝𝘑𝙅𝙹'
+        for k in chars:   
+            hashs[k] = 'J'
+        chars = 'KΚКᏦᛕKⲔ𝐊𝐾𝑲𝒦𝓚𝔎𝕂𝕶𝖪𝗞𝘒𝙆𝙺𝚱𝛫𝜥𝝟𝞙'
+        for k in chars:
+            hashs[k] = 'K'
+        chars = 'LʟᏞᒪℒⅬ𝐋𝐿𝑳𝓛𝔏𝕃𝕷𝖫𝗟𝘓𝙇𝙻'
+        for k in chars:
+            hashs[k] = 'L'
+        chars = 'MΜϺМᎷᗰᛖℳⅯⲘ𐌑𝐌𝑀𝑴𝓜𝔐𝕄𝕸𝖬𝗠𝘔𝙈𝙼𝚳𝛭𝜧𝝡𝞛'
+        for k in chars:
+            hashs[k] = 'M'
+        chars = 'NɴΝℕⲚ𝐍𝑁𝑵𝒩𝓝𝔑𝕹𝖭𝗡𝘕𝙉𝙽𝚴𝛮𝜨𝝢𝞜'
+        for k in chars:
+            hashs[k] = 'N'
+        chars = 'PΡРᏢᑭᴘᴩℙⲢ𝐏𝑃𝑷𝒫𝓟𝔓𝕻𝖯𝗣𝘗𝙋𝙿𝚸𝛲𝜬𝝦𝞠'
+        for k in chars:
+            hashs[k] = 'P'
+        chars = 'Qℚⵕ𝐐𝑄𝑸𝒬𝓠𝔔𝕼𝖰𝗤𝘘𝙌𝚀'
+        for k in chars:
+            hashs[k] = 'Q'
+        chars = 'RƦʀᎡᏒᖇᚱℛℜℝ𝐑𝑅𝑹𝓡𝕽𝖱𝗥𝘙𝙍𝚁'
+        for k in chars:
+            hashs[k] = 'R'
+        chars = 'SЅՏᏕᏚ𝐒𝑆𝑺𝒮𝓢𝔖𝕊𝕾𝖲𝗦𝘚𝙎𝚂'
+        for k in chars:
+            hashs[k] = 'S'
+        chars = 'TΤτТтᎢᴛ⊤⟙Ⲧ𐌕𝐓𝑇𝑻𝒯𝓣𝔗𝕋𝕿𝖳𝗧𝘛𝙏𝚃𝚻𝛕𝛵𝜏𝜯𝝉𝝩𝞃𝞣𝞽'
+        for k in chars:
+            hashs[k] = 'T'
+        chars = 'UՍሀᑌ∪⋃𝐔𝑈𝑼𝒰𝓤𝔘𝕌𝖀𝖴𝗨𝘜𝙐𝚄'
+        for k in chars:
+            hashs[k] = 'U'
+        chars = 'VѴ٧۷ᏙᐯⅤⴸ𝐕𝑉𝑽𝒱𝓥𝔙𝕍𝖁𝖵𝗩𝘝𝙑𝚅'
+        for k in chars:
+            hashs[k] = 'V'
+        chars = 'WԜᎳᏔ𝐖𝑊𝑾𝒲𝓦𝔚𝕎𝖂𝖶𝗪𝘞𝙒𝚆'
+        for k in chars:
+            hashs[k] = 'W'
+        chars = 'XΧХ᙭ᚷⅩ╳Ⲭⵝ𐌗𐌢𝐗𝑋𝑿𝒳𝓧𝔛𝕏𝖃𝖷𝗫𝘟𝙓𝚇𝚾𝛸𝜲𝝬𝞦'
+        for k in chars:
+            hashs[k] = 'X'
+        chars = 'YΥϒУҮᎩᎽⲨ𝐘𝑌𝒀𝒴𝓨𝔜𝕐𝖄𝖸𝗬𝘠𝙔𝚈𝚼𝛶𝜰𝝪𝞤'
+        for k in chars:
+            hashs[k] = 'Y'
+        chars = 'ZΖᏃℤℨ𝐙𝑍𝒁𝒵𝓩𝖅𝖹𝗭𝘡𝙕𝚉𝚭𝛧𝜡𝝛𝞕'
+        for k in chars:
+            hashs[k] = 'Z'
+        chars = 'aɑαа⍺𝐚𝑎𝒂𝒶𝓪𝔞𝕒𝖆𝖺𝗮𝘢𝙖𝚊𝛂𝛼𝜶𝝰𝞪'
+        for k in chars:
+            hashs[k] = 'a'
+        chars = 'bƄЬᏏᖯ𝐛𝑏𝒃𝒷𝓫𝔟𝕓𝖇𝖻𝗯𝘣𝙗𝚋'
+        for k in chars:
+            hashs[k] = 'b'
+        chars = 'cϲсᴄⅽⲥ𝐜𝑐𝒄𝒸𝓬𝔠𝕔𝖈𝖼𝗰𝘤𝙘𝚌'
+        for k in chars:
+            hashs[k] = 'c'
+        chars = 'ⅾdԁᏧᑯⅆⅾ𝐝𝑑𝒅𝒹𝓭𝔡𝕕𝖉𝖽𝗱𝘥𝙙𝚍'
+        for k in chars:
+            hashs[k] = 'd'
+        chars = 'eеҽ℮ℯⅇ𝐞𝑒𝒆𝓮𝔢𝕖𝖊𝖾𝗲𝘦𝙚𝚎'
+        for k in chars:
+            hashs[k] = 'e'
+        chars = 'fſϝքẝ𝐟𝑓𝒇𝒻𝓯𝔣𝕗𝖋𝖿𝗳𝘧𝙛𝚏𝟋'
+        for k in chars:
+            hashs[k] = 'f'
+        chars = 'gƍɡցᶃℊ𝐠𝑔𝒈𝓰𝔤𝕘𝖌𝗀𝗴𝘨𝙜𝚐'
+        for k in chars:
+            hashs[k] = 'g'
+        chars = 'hһհᏂℎ𝐡𝒉𝒽𝓱𝔥𝕙𝖍𝗁𝗵𝘩𝙝𝚑'
+        for k in chars:
+            hashs[k] = 'h'
+        chars = 'iıɩɪιіӏᎥℹⅈⅰ⍳ꙇ𝐢𝑖𝒊𝒾𝓲𝔦𝕚𝖎𝗂𝗶𝘪𝙞𝚒𝚤𝛊𝜄𝜾𝝸𝞲'
+        for k in chars:
+            hashs[k] = 'i'
+        chars = 'jϳјⅉ𝐣𝑗𝒋𝒿𝓳𝔧𝕛𝖏𝗃𝗷𝘫𝙟𝚓'
+        for k in chars:
+            hashs[k] = 'j'
+        chars = 'k𝐤𝑘𝒌𝓀𝓴𝔨𝕜𝖐𝗄𝗸𝘬𝙠𝚔'
+        for k in chars:
+            hashs[k] = 'k'
+        chars = 'ⅿm'
+        for k in chars:
+            hashs[k] = 'm'
+        chars = 'nոռ𝐧𝑛𝒏𝓃𝓷𝔫𝕟𝖓𝗇𝗻𝘯𝙣𝚗ᥒ'
+        for k in chars:
+            hashs[k] = 'n'
+        chars = 'ⲟഠ'
+        for k in chars:
+            hashs[k] = 'o'
+        chars = 'pρϱр⍴ⲣ𝐩𝑝𝒑𝓅𝓹𝔭𝕡𝖕𝗉𝗽𝘱𝙥𝚙𝛒𝛠𝜌𝜚𝝆𝝔𝞀𝞎𝞺𝟈'
+        for k in chars:
+            hashs[k] = 'p'
+        chars = 'qԛգզ𝐪𝑞𝒒𝓆𝓺𝔮𝕢𝖖𝗊𝗾𝘲𝙦𝚚'
+        for k in chars:
+            hashs[k] = 'q'
+        chars = 'rгᴦⲅ𝐫𝑟𝒓𝓇𝓻𝔯𝕣𝖗𝗋𝗿𝘳𝙧𝚛'
+        for k in chars:
+            hashs[k] = 'r'
+        chars = 'sƽѕꜱ𝐬𝑠𝒔𝓈𝓼𝔰𝕤𝖘𝗌𝘀𝘴𝙨𝚜'
+        for k in chars:
+            hashs[k] = 's'
+        chars = 't𝐭𝑡𝒕𝓉𝓽𝔱𝕥𝖙𝗍𝘁𝘵𝙩𝚝'
+        for k in chars:
+            hashs[k] = 't'
+        chars = 'uʋυսᴜ𝐮𝑢𝒖𝓊𝓾𝔲𝕦𝖚𝗎𝘂𝘶𝙪𝚞𝛖𝜐𝝊𝞄𝞾'
+        for k in chars:
+            hashs[k] = 'u'
+        chars = 'vνѵטᴠⅴ∨⋁𝐯𝑣𝒗𝓋𝓿𝔳𝕧𝖛𝗏𝘃𝘷𝙫𝚟𝛎𝜈𝝂𝝼𝞶'
+        for k in chars:
+            hashs[k] = 'v'
+        chars = 'wɯѡԝաᴡ𝐰𝑤𝒘𝓌𝔀𝔴𝕨𝖜𝗐𝘄𝘸𝙬𝚠'
+        for k in chars:
+            hashs[k] = 'w'
+        chars = 'x×хᕁᕽ᙮ⅹ⤫⤬⨯𝐱𝑥𝒙𝓍𝔁𝔵𝕩𝖝𝗑𝘅𝘹𝙭𝚡'
+        for k in chars:
+            hashs[k] = 'x'
+        chars = 'yɣʏγуүყᶌỿℽ𝐲𝑦𝒚𝓎𝔂𝔶𝕪𝖞𝗒𝘆𝘺𝙮𝚢𝛄𝛾𝜸𝝲𝞬'
+        for k in chars:
+            hashs[k] = 'y'
+        chars = 'zᴢ𝐳𝑧𝒛𝓏𝔃𝔷𝕫𝖟𝗓𝘇𝘻𝙯𝚣'
+        for k in chars:
+            hashs[k] = 'z'
+        self.asciitable = hashs
         if len(self.registryValue('wordsList')):
             for item in self.registryValue('wordsList'):
                 try:
@@ -735,8 +883,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         returns permanents patterns triggered by <text>"""
         i = self.getIrc(irc)
         patterns = []
+        text = text.encode('utf-8')
         for k in i.patterns:
             pattern = i.patterns[k]
+            self.log.info('%s : %s (%s)' % (pattern.uid,text,pattern.match(text)))
             if pattern.match(text):
                 patterns.append('#%s' % pattern.uid)
         if len(patterns):
@@ -1944,15 +2094,26 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 else:
                     irc.sendMsg(ircmsgs.IrcMsg('MODE %s -qzo $~a %s' % (channel,irc.nick)))
 
+    def to_ascii (self,txt):
+        for k in self.asciitable:
+            if k in txt:
+                txt = txt.replace(k,self.asciitable[k])
+        return txt
+
     def handleMsg (self,irc,msg,isNotice):
         if not ircutils.isUserHostmask(msg.prefix):
             return
         if msg.prefix == irc.prefix:
             return
-        (targets, text) = msg.args
+        (targets, t) = msg.args
         if ircmsgs.isAction(msg):
             text = ircmsgs.unAction(msg)
-        raw = ircutils.stripColor(text)
+        try:
+            text = t.encode('utf-8','ignore')
+        except:
+            text = t
+        raw = self.to_ascii(text)
+        raw = ircutils.stripColor(raw)
         #raw = unicode(raw, "utf-8", errors="ignore")
         text = raw.lower()
         mask = self.prefixToMask(irc,msg.prefix)
@@ -2022,6 +2183,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if ircdb.checkCapability(msg.prefix, protected):
                     continue
                 killReason = self.registryValue('killMessage',channel=channel)
+#                self.log.debug('checking %s / %s / %s / %s' % (msg.nick,channel,raw,text))
                 for k in i.patterns:
                     pattern = i.patterns[k]
                     if pattern.match(raw):
