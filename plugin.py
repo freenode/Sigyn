@@ -383,174 +383,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.pendingAddDnsbl = False
         self.rmDnsblQueue = []
         self.pendingRmDnsbl = False
-        self.words = []
         self.channelCreationPattern = re.compile(r"^[#a-z]{6,9}$")
         self.collect = {}
         self.collecting = False
         self.starting = world.starting
         self.recaps = re.compile("[A-Z]")
-        self.asciitable = {}
-        hashs = {}
-        chars = 'AΑАᎪᗅᴀ𝐀𝐴𝑨𝒜𝓐𝔄𝔸𝕬𝖠𝗔𝘈𝘼𝙰𝚨𝛢𝜜𝝖𝞐'
-        for k in chars:
-            hashs[k] = 'A'
-        chars = 'BʙΒВвᏴᗷᛒℬ𐌁𝐁𝐵𝑩𝓑𝔅𝔹𝕭𝖡𝗕𝘉𝘽𝙱𝚩𝛣𝜝𝝗𝞑'
-        for k in chars:
-            hashs[k] = 'B'
-        chars = 'CϹСᏟℂℭⅭⲤ𐌂𝐂𝐶𝑪𝒞𝓒𝕮𝖢𝗖𝘊𝘾𝙲'
-        for k in chars:
-            hashs[k] = 'C'
-        chars = 'DᎠᗞᗪᴅⅅⅮ𝐃𝐷𝑫𝒟𝓓𝔇𝔻𝕯𝖣𝗗𝘋𝘿𝙳'
-        for k in chars:
-            hashs[k] = 'D'
-        chars = 'EΕЕᎬᴇℰ⋿ⴹ𝐄𝐸𝑬𝓔𝔈𝔼𝕰𝖤𝗘𝘌𝙀𝙴𝚬𝛦𝜠𝝚𝞔'
-        for k in chars:
-            hashs[k] = 'E'
-        chars = 'FϜᖴℱ𝐅𝐹𝑭𝓕𝔉𝔽𝕱𝖥𝗙𝘍𝙁𝙵𝟊'
-        for k in chars:
-            hashs[k] = 'F'
-        chars = 'GɢԌԍᏀᏳ𝐆𝐺𝑮𝒢𝓖𝔊𝔾𝕲𝖦𝗚𝘎𝙂𝙶'
-        for k in chars:
-            hashs[k] = 'G'
-        chars = 'HʜΗНнᎻᕼℋℌℍⲎ𝐇𝐻𝑯𝓗𝕳𝖧𝗛𝘏𝙃𝙷𝚮𝛨𝜢𝝜𝞖'
-        for k in chars:
-            hashs[k] = 'H'
-        chars = 'JЈᎫᒍᴊ𝐉𝐽𝑱𝒥𝓙𝔍𝕁𝕵𝖩𝗝𝘑𝙅𝙹'
-        for k in chars:   
-            hashs[k] = 'J'
-        chars = 'KΚКᏦᛕKⲔ𝐊𝐾𝑲𝒦𝓚𝔎𝕂𝕶𝖪𝗞𝘒𝙆𝙺𝚱𝛫𝜥𝝟𝞙'
-        for k in chars:
-            hashs[k] = 'K'
-        chars = 'LʟᏞᒪℒⅬ𝐋𝐿𝑳𝓛𝔏𝕃𝕷𝖫𝗟𝘓𝙇𝙻'
-        for k in chars:
-            hashs[k] = 'L'
-        chars = 'MΜϺМᎷᗰᛖℳⅯⲘ𐌑𝐌𝑀𝑴𝓜𝔐𝕄𝕸𝖬𝗠𝘔𝙈𝙼𝚳𝛭𝜧𝝡𝞛'
-        for k in chars:
-            hashs[k] = 'M'
-        chars = 'NɴΝℕⲚ𝐍𝑁𝑵𝒩𝓝𝔑𝕹𝖭𝗡𝘕𝙉𝙽𝚴𝛮𝜨𝝢𝞜'
-        for k in chars:
-            hashs[k] = 'N'
-        chars = 'PΡРᏢᑭᴘᴩℙⲢ𝐏𝑃𝑷𝒫𝓟𝔓𝕻𝖯𝗣𝘗𝙋𝙿𝚸𝛲𝜬𝝦𝞠'
-        for k in chars:
-            hashs[k] = 'P'
-        chars = 'Qℚⵕ𝐐𝑄𝑸𝒬𝓠𝔔𝕼𝖰𝗤𝘘𝙌𝚀'
-        for k in chars:
-            hashs[k] = 'Q'
-        chars = 'RƦʀᎡᏒᖇᚱℛℜℝ𝐑𝑅𝑹𝓡𝕽𝖱𝗥𝘙𝙍𝚁'
-        for k in chars:
-            hashs[k] = 'R'
-        chars = 'SЅՏᏕᏚ𝐒𝑆𝑺𝒮𝓢𝔖𝕊𝕾𝖲𝗦𝘚𝙎𝚂'
-        for k in chars:
-            hashs[k] = 'S'
-        chars = 'TΤτТтᎢᴛ⊤⟙Ⲧ𐌕𝐓𝑇𝑻𝒯𝓣𝔗𝕋𝕿𝖳𝗧𝘛𝙏𝚃𝚻𝛕𝛵𝜏𝜯𝝉𝝩𝞃𝞣𝞽'
-        for k in chars:
-            hashs[k] = 'T'
-        chars = 'UՍሀᑌ∪⋃𝐔𝑈𝑼𝒰𝓤𝔘𝕌𝖀𝖴𝗨𝘜𝙐𝚄'
-        for k in chars:
-            hashs[k] = 'U'
-        chars = 'VѴ٧۷ᏙᐯⅤⴸ𝐕𝑉𝑽𝒱𝓥𝔙𝕍𝖁𝖵𝗩𝘝𝙑𝚅'
-        for k in chars:
-            hashs[k] = 'V'
-        chars = 'WԜᎳᏔ𝐖𝑊𝑾𝒲𝓦𝔚𝕎𝖂𝖶𝗪𝘞𝙒𝚆'
-        for k in chars:
-            hashs[k] = 'W'
-        chars = 'XΧХ᙭ᚷⅩ╳Ⲭⵝ𐌗𐌢𝐗𝑋𝑿𝒳𝓧𝔛𝕏𝖃𝖷𝗫𝘟𝙓𝚇𝚾𝛸𝜲𝝬𝞦'
-        for k in chars:
-            hashs[k] = 'X'
-        chars = 'YΥϒУҮᎩᎽⲨ𝐘𝑌𝒀𝒴𝓨𝔜𝕐𝖄𝖸𝗬𝘠𝙔𝚈𝚼𝛶𝜰𝝪𝞤'
-        for k in chars:
-            hashs[k] = 'Y'
-        chars = 'ZΖᏃℤℨ𝐙𝑍𝒁𝒵𝓩𝖅𝖹𝗭𝘡𝙕𝚉𝚭𝛧𝜡𝝛𝞕'
-        for k in chars:
-            hashs[k] = 'Z'
-        chars = 'aɑαа⍺𝐚𝑎𝒂𝒶𝓪𝔞𝕒𝖆𝖺𝗮𝘢𝙖𝚊𝛂𝛼𝜶𝝰𝞪'
-        for k in chars:
-            hashs[k] = 'a'
-        chars = 'bƄЬᏏᖯ𝐛𝑏𝒃𝒷𝓫𝔟𝕓𝖇𝖻𝗯𝘣𝙗𝚋'
-        for k in chars:
-            hashs[k] = 'b'
-        chars = 'cϲсᴄⅽⲥ𝐜𝑐𝒄𝒸𝓬𝔠𝕔𝖈𝖼𝗰𝘤𝙘𝚌'
-        for k in chars:
-            hashs[k] = 'c'
-        chars = 'ⅾdԁᏧᑯⅆⅾ𝐝𝑑𝒅𝒹𝓭𝔡𝕕𝖉𝖽𝗱𝘥𝙙𝚍'
-        for k in chars:
-            hashs[k] = 'd'
-        chars = 'eеҽ℮ℯⅇ𝐞𝑒𝒆𝓮𝔢𝕖𝖊𝖾𝗲𝘦𝙚𝚎'
-        for k in chars:
-            hashs[k] = 'e'
-        chars = 'fſϝքẝ𝐟𝑓𝒇𝒻𝓯𝔣𝕗𝖋𝖿𝗳𝘧𝙛𝚏𝟋'
-        for k in chars:
-            hashs[k] = 'f'
-        chars = 'gƍɡցᶃℊ𝐠𝑔𝒈𝓰𝔤𝕘𝖌𝗀𝗴𝘨𝙜𝚐'
-        for k in chars:
-            hashs[k] = 'g'
-        chars = 'hһհᏂℎ𝐡𝒉𝒽𝓱𝔥𝕙𝖍𝗁𝗵𝘩𝙝𝚑'
-        for k in chars:
-            hashs[k] = 'h'
-        chars = 'iıɩɪιіӏᎥℹⅈⅰ⍳ꙇ𝐢𝑖𝒊𝒾𝓲𝔦𝕚𝖎𝗂𝗶𝘪𝙞𝚒𝚤𝛊𝜄𝜾𝝸𝞲'
-        for k in chars:
-            hashs[k] = 'i'
-        chars = 'jϳјⅉ𝐣𝑗𝒋𝒿𝓳𝔧𝕛𝖏𝗃𝗷𝘫𝙟𝚓'
-        for k in chars:
-            hashs[k] = 'j'
-        chars = 'k𝐤𝑘𝒌𝓀𝓴𝔨𝕜𝖐𝗄𝗸𝘬𝙠𝚔'
-        for k in chars:
-            hashs[k] = 'k'
-        chars = 'ⅿm'
-        for k in chars:
-            hashs[k] = 'm'
-        chars = 'nոռ𝐧𝑛𝒏𝓃𝓷𝔫𝕟𝖓𝗇𝗻𝘯𝙣𝚗ᥒ'
-        for k in chars:
-            hashs[k] = 'n'
-        chars = 'ⲟഠ'
-        for k in chars:
-            hashs[k] = 'o'
-        chars = 'pρϱр⍴ⲣ𝐩𝑝𝒑𝓅𝓹𝔭𝕡𝖕𝗉𝗽𝘱𝙥𝚙𝛒𝛠𝜌𝜚𝝆𝝔𝞀𝞎𝞺𝟈'
-        for k in chars:
-            hashs[k] = 'p'
-        chars = 'qԛգզ𝐪𝑞𝒒𝓆𝓺𝔮𝕢𝖖𝗊𝗾𝘲𝙦𝚚'
-        for k in chars:
-            hashs[k] = 'q'
-        chars = 'rгᴦⲅ𝐫𝑟𝒓𝓇𝓻𝔯𝕣𝖗𝗋𝗿𝘳𝙧𝚛'
-        for k in chars:
-            hashs[k] = 'r'
-        chars = 'sƽѕꜱ𝐬𝑠𝒔𝓈𝓼𝔰𝕤𝖘𝗌𝘀𝘴𝙨𝚜'
-        for k in chars:
-            hashs[k] = 's'
-        chars = 't𝐭𝑡𝒕𝓉𝓽𝔱𝕥𝖙𝗍𝘁𝘵𝙩𝚝'
-        for k in chars:
-            hashs[k] = 't'
-        chars = 'uʋυսᴜ𝐮𝑢𝒖𝓊𝓾𝔲𝕦𝖚𝗎𝘂𝘶𝙪𝚞𝛖𝜐𝝊𝞄𝞾'
-        for k in chars:
-            hashs[k] = 'u'
-        chars = 'vνѵטᴠⅴ∨⋁𝐯𝑣𝒗𝓋𝓿𝔳𝕧𝖛𝗏𝘃𝘷𝙫𝚟𝛎𝜈𝝂𝝼𝞶'
-        for k in chars:
-            hashs[k] = 'v'
-        chars = 'wɯѡԝաᴡ𝐰𝑤𝒘𝓌𝔀𝔴𝕨𝖜𝗐𝘄𝘸𝙬𝚠'
-        for k in chars:
-            hashs[k] = 'w'
-        chars = 'x×хᕁᕽ᙮ⅹ⤫⤬⨯𝐱𝑥𝒙𝓍𝔁𝔵𝕩𝖝𝗑𝘅𝘹𝙭𝚡'
-        for k in chars:
-            hashs[k] = 'x'
-        chars = 'yɣʏγуүყᶌỿℽ𝐲𝑦𝒚𝓎𝔂𝔶𝕪𝖞𝗒𝘆𝘺𝙮𝚢𝛄𝛾𝜸𝝲𝞬'
-        for k in chars:
-            hashs[k] = 'y'
-        chars = 'zᴢ𝐳𝑧𝒛𝓏𝔃𝔷𝕫𝖟𝗓𝘇𝘻𝙯𝚣'
-        for k in chars:
-            hashs[k] = 'z'
-        self.asciitable = hashs
-        if len(self.registryValue('wordsList')):
-            for item in self.registryValue('wordsList'):
-                try:
-                    with open(item, 'r') as content_file:
-                        file = content_file.read()
-                        for line in file.split('\n'):
-                            for word in line.split(' '):
-                                w = word.strip()
-                                if len(w) > self.registryValue('wordMinimum'):
-                                    self.words.append(w)
-                except:
-                    continue
 
     def collectnick (self,irc,msg,args):
         """
@@ -568,46 +405,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             self.collecting = True
             irc.replySuccess()
     collectnick = wrap(collectnick,['owner'])
-
-    def lswords (self,irc,msg,args,word):
-        """<word>
-
-        return if word is in list"""
-        irc.reply('%s in list ? %s' % (word,word in self.words))
-    lswords = wrap(lswords,['owner','text'])
-
-    def rmwords (self,irc,msg,args,words):
-        """<word> [<word>]
-
-        remove <word> from wordsList files"""
-        newList = []
-        for item in self.registryValue('wordsList'):
-            try:
-                f = open(item,'r')
-                wol = f.read().split('\n')
-                wnl = []
-                for line in wol:
-                    for word in line.split(' '):
-                        w = word.strip()
-                        if len(w) > self.registryValue('wordMinimum'):
-                            found = False
-                            for nw in words:
-                                if w == nw:
-                                    found = True
-                                    break
-                            if not found:
-                                wnl.append(w)
-                f.close()
-                f = open(item,'w')
-                f.write('\n'.join(wnl))
-                f.close()
-                newList = newList + wnl
-            except:
-                continue
-        oldList = len(self.words)
-        self.words = newList
-        irc.reply('words list updated: %s words before, %s words after' % (oldList,len(newList)))
-    rmwords = wrap(rmwords,['owner',many('something')])
 
     def removeDnsbl (self,irc,ip,droneblHost,droneblKey):
         def check(answer):
@@ -637,6 +434,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     else:
                         self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,id))
         if len(self.rmDnsblQueue) == 0 and not self.pendingRmDnsbl:
+            self.logChannel(irc,'RMDNSBLING: %s' % ip)
             request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
             type, uri = urllib.splittype(droneblHost)
             host, handler = urllib.splithost(uri)
@@ -661,6 +459,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 item = self.addDnsblQueue.pop()
                 self.fillDnsbl(item[0],item[1],item[2],item[3],item[4])
             if 'listed="1"' in answer:
+                self.logChannel(irc,'DNSBL: %s (already listed)' % ip)
                 return
             add = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><add ip='"+ip+"' type='3' comment='used by irc spam bot' /></request>"
             type, uri = urllib.splittype(droneblHost)
@@ -676,6 +475,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             else:
                 self.logChannel(irc,'DNSBL: %s' % ip)
         if len(self.addDnsblQueue) == 0 or not self.pendingAddDnsbl:
+            self.logChannel(irc,'DNSBLING: %s' % ip)
             self.pendingAddDnsbl = True
             request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
             type, uri = urllib.splittype(droneblHost)
@@ -1928,10 +1728,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                    found = True
                    q = self.getIrcQueueFor(irc,nick,'channel-created',self.registryValue('channelCreationLife'))
                    found = len(q) == self.registryValue('channelCreationPermit') and i.defcon
-#                   for n in self.words:
-#                       if len(n) > self.registryValue('wordMinimum') and i.toklineresults[nick]['gecos'].startswith(n) and nick.startswith(n):
-#                           found = n
-#                           break
                    if time.time() - i.toklineresults[nick]['signon'] < self.registryValue('alertPeriod') and found and not 'gateway/' in i.toklineresults[nick]['hostmask'] and not isCloaked(i.toklineresults[nick]['hostmask'],self):
                        channel = []
                        for t in q:
@@ -2094,12 +1890,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 else:
                     irc.sendMsg(ircmsgs.IrcMsg('MODE %s -qzo $~a %s' % (channel,irc.nick)))
 
-    def to_ascii (self,txt):
-        for k in self.asciitable:
-            if k in txt:
-                txt = txt.replace(k,self.asciitable[k])
-        return txt
-
     def handleMsg (self,irc,msg,isNotice):
         if not ircutils.isUserHostmask(msg.prefix):
             return
@@ -2112,9 +1902,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             text = t.encode('utf-8','ignore')
         except:
             text = t
-        raw = self.to_ascii(text)
-        raw = ircutils.stripColor(raw)
-        #raw = unicode(raw, "utf-8", errors="ignore")
+        raw = ircutils.stripColor(text)
         text = raw.lower()
         mask = self.prefixToMask(irc,msg.prefix)
         i = self.getIrc(irc)
@@ -2596,10 +2384,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     found = pattern
                                     break
                         if found:
-                            for n in self.words:
-                                if len(n) > self.registryValue('wordMinimum') and hostmask.startswith(n):
-                                    self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'!dnsbl (%s/%s)' % (n,found))
-                                    break
+                            self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'!dnsbl (%s/%s)' % (n,found))
                 if text.startswith('Killing client ') and 'due to lethal mask ' in text:
                     patterns = self.registryValue('droneblPatterns')
                     found = False
@@ -2999,19 +2784,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     found2 = t
                 else:
                     found = t
-#            for n in self.words:
-#                if len(n) > self.registryValue('wordMinimum') and user.startswith(n):
-#                    found = True
-#                    break
             if found and found2 and not found in found2 and not self.registryValue('ignoreChannel',channel=found) and not self.registryValue('ignoreChannel',channel=found2):
                 if self.channelCreationPattern.match(channel):
                     i.toklineresults[user] = {}
                     i.toklineresults[user]['kind'] = 'words'
                     i.tokline[user] = text
                     irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s %s' % (user,user)))
-        #if len(q) > permit:
-        #    self.logChannel(irc,"NOTE: %s created channels (%s)" % (user,', '.join(list(q))))
-        #    q.reset()
 
     def doNotice (self,irc,msg):
         (targets, text) = msg.args
@@ -3587,20 +3365,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if isCloaked(msg.prefix,self):
                     t = t - self.registryValue('ignoreDuration',channel=channel) - 1
                 chan.nicks[msg.nick] = [t,msg.prefix,mask,gecos,account]
-                if i.defcon and self.registryValue('mainChannel') in channel:
-                    found = False
-                    for n in self.words:
-                        if len(n) > self.registryValue('wordMinimum') and msg.nick.startswith(n) and gecos.startswith(n) and ((len(msg.nick) - len(n)) < 4):
-                           found = n
-                           break
-                    if len(msg.nick) > self.registryValue('wordMinimum') and found and not isCloaked(msg.prefix,self) and not 'gateway/' in msg.prefix and not account:
-                        self.kill(irc,msg.nick,self.registryValue('killMessage',channel=channel))
-                        uid = random.randint(0,1000000)
-                        self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'%s - badwords in %s - %s' % (uid,channel,found))
-                        self.logChannel(irc,'BAD: [%s] %s (badword %s - %s)' % (channel,found,msg.prefix,uid))
-                        self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
-                        del chan.nicks[msg.nick]
-                        continue
                 if i.netsplit:
                     continue
                 if 'gateway/shell/matrix.org' in msg.prefix:
