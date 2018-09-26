@@ -412,6 +412,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if len(self.rmDnsblQueue) > 0:
                 item = self.rmDnsblQueue.pop()
                 self.removeDnsbl(item[0],item[1],item[2],item[3])
+            found = False
             for line in answer.split('\n'):
                 if line.find('listed="1"') != -1:
                     if line.find('type="18"') != -1:
@@ -428,12 +429,18 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     connection.putheader("Content-Length", str(int(len(add))))
                     connection.endheaders()
                     connection.send(add)
-                    response = connection.getresponse().read().replace('\n','')
-                    if "You are not authorized to remove this incident" in response:
-                        self.logChannel(irc,'RMDNSBL: You are not authorized to remove this incident %s (%s)' % (ip,id))
-                    else:
-                        self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,id))
-        if len(self.rmDnsblQueue) == 0 and not self.pendingRmDnsbl:
+                    found = True
+                    try:
+                        response = connection.getresponse().read().replace('\n','')
+                        if "You are not authorized to remove this incident" in response:
+                            self.logChannel(irc,'RMDNSBL: You are not authorized to remove this incident %s (%s)' % (ip,id))
+                        else:
+                            self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,id))
+                    except:
+                        self.logChannel(irc,'RMDNSBL: %s (%s) unknow error' % (ip,id))
+            if not found:
+                self.logChannel('RMDNSBL: %s (not listed)' % ip)
+        if not self.pendingRmDnsbl:
             self.logChannel(irc,'RMDNSBLING: %s' % ip)
             request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
             type, uri = urllib.splittype(droneblHost)
@@ -449,6 +456,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 check(connection.getresponse().read())
             except:
                 self.logChannel(irc,'RMDNSBL: TimeOut for %s' % ip)
+                self.pendingRmDnsbl = False
+                if len(self.rmDnsblQueue) > 0:
+                    item = self.rmDnsblQueue.pop()
+                    self.removeDnsbl(item[0],item[1],item[2],item[3])                
         else:
             self.rmDnsblQueue.append([irc, ip, droneblHost, droneblKey])
 
@@ -474,7 +485,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.logChannel(irc,'DNSBL: %s (%s)' % (ip,comment))
             else:
                 self.logChannel(irc,'DNSBL: %s' % ip)
-        if len(self.addDnsblQueue) == 0 or not self.pendingAddDnsbl:
+        if not self.pendingAddDnsbl:
             self.logChannel(irc,'DNSBLING: %s' % ip)
             self.pendingAddDnsbl = True
             request = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
@@ -490,6 +501,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 check(connection.getresponse().read())
             except:
                 self.logChannel(irc,'DNSBL: TimeOut for %s' % ip)
+                self.pendingAddDnsbl = False
+                if len(self.addDnsblQueue) > 0:
+                    item = self.addDnsblQueue.pop()
+                    self.fillDnsbl(item[0],item[1],item[2],item[3],item[4])
         else:
             self.addDnsblQueue.append([irc, ip, droneblHost, droneblKey,comment])
 
@@ -1692,6 +1707,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            if badmail and len(email) and len(nick):
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :BADMAIL ADD *@%s %s' % (email,mx)))
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FDROP %s' % nick))
+               irc.queueMsg(ircmsgs.notice(nick,'Your account has been dropped, please register it again with a valid email address'))
        elif nick in i.tokline:
           if not nick in i.toklineresults:
               i.toklineresults[nick] = {}
@@ -1752,6 +1768,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
        i = self.getIrc(irc)
        if channel and not channel in irc.state.channels and not ircdb.checkIgnored(msg.prefix):
            if self.registryValue('leaveChannelIfNoActivity',channel=channel) == -1:
+               # permanent channel case, rejoin without issue
                irc.queueMsg(ircmsgs.join(channel))
                self.logChannel(irc,"JOIN: [%s] due to %s's invite" % (channel,msg.prefix))
                try:
@@ -1761,6 +1778,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                    pass
            elif self.registryValue('lastActionTaken',channel=channel) > 0.0:
                if self.registryValue('minimumUsersInChannel') > -1:
+                   ## checking user count
                    i.invites[channel] = msg.prefix
                    irc.queueMsg(ircmsgs.IrcMsg('LIST %s' % channel))
                else:
@@ -1772,6 +1790,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        network.channels().add(channel)
                    except KeyError:
                        pass
+                   irc.queueMsg(ircmsgs.privmsg(channel,'** Warning: if there is any bot in %s which should be exempted from %s, contact staffers before it get caught**' % (channel,irc.nick)))
            else:
                self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
                irc.queueMsg(ircmsgs.privmsg(msg.nick,'The invitation to %s will be reviewed by staff' % channel))
@@ -1789,6 +1808,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 except KeyError:
                     pass
                 self.logChannel(irc,"JOIN: [%s] due to %s's invite (%s users)" % (msg.args[1],i.invites[msg.args[1]],msg.args[2]))
+                irc.queueMsg(ircmsgs.privmsg(channel,'** Warning: if there is any bot in %s which should be exempted from %s, contact staffers before it get caught**' % (msg.args[1],irc.nick)))
             else:
                 self.logChannel(irc,"INVITE: [%s] by %s denied (%s users)" % (msg.args[1],i.invites[msg.args[1]],msg.args[2]))
                 (nick,ident,host) = ircutils.splitHostmask(i.invites[msg.args[1]])
@@ -2384,7 +2404,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                     found = pattern
                                     break
                         if found:
-                            self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'!dnsbl (%s/%s)' % (n,found))
+                            self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'!dnsbl (%s in suspicious mask)' % found)
                 if text.startswith('Killing client ') and 'due to lethal mask ' in text:
                     patterns = self.registryValue('droneblPatterns')
                     found = False
