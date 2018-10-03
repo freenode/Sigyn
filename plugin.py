@@ -1790,7 +1790,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        network.channels().add(channel)
                    except KeyError:
                        pass
-                   irc.queueMsg(ircmsgs.privmsg(channel,'** Warning: if there is any bot in %s which should be exempted from %s, contact staffers before it get caught**' % (channel,irc.nick)))
+                   irc.queueMsg(ircmsgs.privmsg(channel,'** Warning: if there is any bot in %s which should be exempted from %s, contact staffers before it gets caught **' % (channel,irc.nick)))
            else:
                self.logChannel(irc,'INVITE: [%s] %s is asking for %s' % (channel,msg.prefix,irc.nick))
                irc.queueMsg(ircmsgs.privmsg(msg.nick,'The invitation to %s will be reviewed by staff' % channel))
@@ -1808,7 +1808,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 except KeyError:
                     pass
                 self.logChannel(irc,"JOIN: [%s] due to %s's invite (%s users)" % (msg.args[1],i.invites[msg.args[1]],msg.args[2]))
-                irc.queueMsg(ircmsgs.privmsg(channel,'** Warning: if there is any bot in %s which should be exempted from %s, contact staffers before it get caught**' % (msg.args[1],irc.nick)))
+                irc.queueMsg(ircmsgs.privmsg(channel,'** Warning: if there is any bot in %s which should be exempted from %s, contact staffers before it gets caught **' % (msg.args[1],irc.nick)))
             else:
                 self.logChannel(irc,"INVITE: [%s] by %s denied (%s users)" % (msg.args[1],i.invites[msg.args[1]],msg.args[2]))
                 (nick,ident,host) = ircutils.splitHostmask(i.invites[msg.args[1]])
