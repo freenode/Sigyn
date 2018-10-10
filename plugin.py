@@ -989,7 +989,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                               irc.reply(self.registryValue('msgInviteConfirm'))
                ops.append(channel)
        if len(ops) and not len(channels):
-           irc.replyError("No matches %s in recent bans from %s" % (nick,','.join(ops)))
+           irc.replyError("'%s' does not match any recent bans from %s" % (nick,', '.join(ops)))
        else:
            irc.noReply()
     unkline = wrap(unkline,['private','text'])
