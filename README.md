@@ -2,7 +2,7 @@
 
 A Limnoria plugin to handle spam and abuse on a network level.
 
-Sigyn is developed primarily for the freenode irc network. As with most of
+Sigyn is developed primarily for the freenode IRC network. As with most of
 freenode's utility bots, Sigyn is named after a
 [Norse goddess](https://en.wikipedia.org/wiki/Sigyn).
 
