@@ -235,6 +235,14 @@ conf.registerGlobalValue(Sigyn, 'registerLife',
 conf.registerChannelValue(Sigyn, 'defconMode',
     registry.Boolean(False,"""changes +qz $~a -qz $~a on defcon"""))
 
+# unicode exploits
+conf.registerChannelValue(Sigyn, 'badunicodeLimit',
+    registry.Integer(-1,"""score of message with bad unicode limit"""))
+conf.registerChannelValue(Sigyn, 'badunicodePermit',
+    registry.Integer(-1,"""number bad unicode message allowed"""))
+conf.registerChannelValue(Sigyn, 'badunicodeLife',
+    registry.PositiveInteger(1,"""life of bad unicode message"""))
+
 # Quit flood
 conf.registerChannelValue(Sigyn, 'brokenPermit',
     registry.Integer(-1,"""number of quit allowed"""))
@@ -248,6 +256,8 @@ conf.registerChannelValue(Sigyn, 'brokenHost',
     registry.CommaSeparatedListOfStrings([''], """list of knowns broken host"""))
 
 # ignores feature
+conf.registerChannelValue(Sigyn, 'ignoreRegisteredUser',
+     registry.Boolean(False, """ignore registered users in the channel"""))
 conf.registerChannelValue(Sigyn, 'ignoreChannel',
      registry.Boolean(False, """ignore everything in the channel"""))
 conf.registerChannelValue(Sigyn, 'ignoreVoicedUser',
@@ -409,3 +419,4 @@ conf.registerChannelValue(Sigyn, 'nickPermit',
     registry.Integer(-1,"""number of nick change allowed during cycleLife"""))
 conf.registerChannelValue(Sigyn, 'nickLife',
     registry.PositiveInteger(1,"""life duration of nick changes buffer detection"""))
+
