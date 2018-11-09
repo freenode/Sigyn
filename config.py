@@ -180,7 +180,7 @@ conf.registerGlobalValue(Sigyn, 'defcon',
     registry.PositiveInteger(1,"""duration of defcon mode in seconds, where bot is more agressive, with lowered abuse triggers and no ignores"""))
 
 # amsg
-conf.registerGlobalValue(Sigyn, 'amsgMinium',
+conf.registerGlobalValue(Sigyn, 'amsgMinimum',
     registry.PositiveInteger(1,"""length of text necessary to start amsg check"""))
 conf.registerGlobalValue(Sigyn, 'amsgPermit',
     registry.Integer(-1,"""number of channels allowed with same message"""))
@@ -242,6 +242,8 @@ conf.registerChannelValue(Sigyn, 'badunicodePermit',
     registry.Integer(-1,"""number bad unicode message allowed"""))
 conf.registerChannelValue(Sigyn, 'badunicodeLife',
     registry.PositiveInteger(1,"""life of bad unicode message"""))
+conf.registerChannelValue(Sigyn, 'badunicodeScore',
+    registry.PositiveInteger(1,"""score of message to trigger limit"""))
 
 # Quit flood
 conf.registerChannelValue(Sigyn, 'brokenPermit',

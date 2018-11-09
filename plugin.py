@@ -362,7 +362,11 @@ class Pattern (object):
             s = self._match.search (text) != None
         else:
             text = text.lower()
-            s = self.pattern in text
+            try:
+                s = self.pattern in text
+            except:
+                self.pattern = self.pattern.decode('utf-8')
+                s = self.pattern in text
         return s
 
     def __repr__(self):
@@ -2160,8 +2164,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
                 if not isBanned:
                     # todo re-implement amsg detection
-                    mini = self.registryValue('amsgMinium')
-                    if len(text) > mini:
+                    mini = self.registryValue('amsgMinimum')
+                    if len(text) > mini or text.find('http') != -1:
                         limit = self.registryValue('amsgPermit')
                         if limit > -1:
                             life = self.registryValue('amsgLife')
@@ -2814,7 +2818,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i = self.getIrc(irc)
         if msg.args[0] == irc.nick and msg.args[1] == 'I' and msg.args[2] == 'NOMATCH':
             if len(i.dlines):
-                irc.sendMsg(ircmsgs.IrcMsg('DLINE %s %s on * :%s' % (self.registryValue('saslDuration'),i.dlines.pop(0),self.registryValue('saslMessage'))))
+                h = i.dlines.pop(0)
+                self.log.info('DLINE %s|%s' % (h,self.registryValue('saslDuration')))
+                irc.sendMsg(ircmsgs.IrcMsg('DLINE %s %s on * :%s' % (self.registryValue('saslDuration'),h,self.registryValue('saslMessage'))))
             if len(i.dlines):
                 irc.queueMsg(ircmsgs.IrcMsg('TESTLINE %s' % i.dlines[0]))
 
@@ -2976,9 +2982,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         limit = self.registryValue('badunicodeLimit',channel=channel)
         if limit > 0:
             score = sequence_weirdness(u'%s' % text)
-            if limit < score:
+            count = self.registryValue('badunicodeScore',channel=channel)
+            if count < score:
                 return self.isBadOnChannel(irc,channel,'badunicode',mask)
-                
+        return False
+
     def isHilight (self,irc,msg,channel,mask,text,low):
         kind = 'hilight'
         if low:
@@ -3048,7 +3056,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 # we start to try to create pattern if user hits around 2/3 of his buffer
                 if len(chan.buffers[kind][key])/(limit * 1.0) > 0.55:
                     enough = True
-        if enough:
+        if result or enough:
             life = self.registryValue('computedPatternLife',channel=channel)
             if not chan.patterns:
                 chan.patterns = utils.structures.TimeoutQueue(life)
@@ -3072,6 +3080,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 patterns = {}
                 for repeat in repeats:
                     (p,c) = repeat
+                    #self.log.debug('%s :: %s' % (p,c))
                     if len(p) < self.registryValue('%sMinimum' % kind, channel=channel):
                         continue
                     p = p.strip()
@@ -3378,28 +3387,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         if b:
                             self.logChannel(irc,'NOTE: [%s] %s (%s)' % (channel,b,pattern))
                     logs.enqueue(gecos)
-                if len(flags) > 0 and self.registryValue('massJoinTakeAction',channel=channel):
-                    if chan.called and self.registryValue('defconMode',channel=channel):
-                        if not i.defcon:
-                            self.logChannel(irc,"INFO: ignores lifted and abuses end to klines for %ss due to join abuses in %s" % (self.registryValue('defcon')*2,channel))
-                            i.defcon = time.time() + (self.registryValue('defcon')*2)
-                            if not i.god:
-                                irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
-                            else:
-                             for channel in irc.state.channels:  
-                                    if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
-                                        if not 'z' in irc.state.channels[channel].modes:
-                                            if irc.nick in list(irc.state.channels[channel].ops):
-                                                irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
-                                            else:
-                                                irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
-                        else:
-                            i.defcon = time.time()
-                        for u in flags:
-                            self.kill(irc,msg.nick,self.registryValue('killMessage',channel=channel))
-                            uid = random.randint(0,1000000)
-                            self.kline(irc,msg.prefix,u,self.registryValue('klineDuration'),'%s - massJoin %s' % (uid,channel))
-                            self.logChannel(irc,'BAD: [%s] %s (massJoin %s - %s)' % (channel,u,msg.prefix,uid))
+                if self.hasAbuseOnChannel(irc,channel,'massJoinHost') and len(flags) > 0 and self.registryValue('massJoinTakeAction',channel=channel):
+                    for u in flags:
+                        self.kill(irc,msg.nick,self.registryValue('killMessage',channel=channel))
+                        uid = random.randint(0,1000000)
+                        self.kline(irc,msg.prefix,u,self.registryValue('klineDuration'),'%s - massJoinHost %s' % (uid,channel))
+                        self.logChannel(irc,'BAD: [%s] %s (massJoinHost %s - %s)' % (channel,u,msg.prefix,uid))
    
     def doPart (self,irc,msg):
         channels = msg.args[0].split(',')
