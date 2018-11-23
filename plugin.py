@@ -187,6 +187,7 @@ class Ircd (object):
         self.dlines = []
         self.invites = {}
         self.nicks = {}
+        
 
     def __repr__(self):
         return '%s(patterns=%r, queues=%r, channels=%r, pending=%r, logs=%r, limits=%r, whowas=%r, klines=%r)' % (self.__class__.__name__,
@@ -543,13 +544,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if not i.god:
                     irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
                 else:
-                    for channel in irc.state.channels:
-                        if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
-                            if not 'z' in irc.state.channels[channel].modes:
-                                if irc.nick in list(irc.state.channels[channel].ops):
-                                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
-                                else:
-                                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
+                    self.applyDefcon (irc)
         irc.replySuccess()
     defcon = wrap(defcon,['owner',optional('channel')])
 
@@ -955,6 +950,20 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     # internal stuff
 
+    def applyDefcon (self, irc):
+        i = self.getIrc(irc)
+        for channel in irc.state.channels:
+            if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
+                chan = self.getChan(irc,channel)
+                if i.defcon or chan.called:
+                    if not 'z' in irc.state.channels[channel].modes:
+                        if irc.nick in list(irc.state.channels[channel].ops):
+                            irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
+                        else:
+                            irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
+
+
+
     def _ip_ranges (self, h):
         if '/' in h:
             if h.startswith('gateway/web/freenode/ip.'):
@@ -1231,15 +1240,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 elif mode == '+p':
                     i.god = True
                     self.log.debug('%s is switching to god' % irc.nick)
-                    for channel in irc.state.channels:
-                        if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
-                            chan = self.getChan(irc,channel)
-                            if i.defcon or chan.called:
-                                if not 'z' in irc.state.channels[channel].modes:
-                                    if irc.nick in list(irc.state.channels[channel].ops):
-                                        irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
-                                    else:
-                                        irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
+                    self.applyDefcon(irc)
                 elif mode == '-p':
                     i.god = False
                     self.log.debug('%s is switching to mortal' % irc.nick)
@@ -2144,16 +2145,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             self.logChannel(irc,"INFO: ignores lifted and abuses end to klines for %ss due to abuses in %s after lastest defcon %s" % (self.registryValue('defcon')*2,channel,i.lastDefcon))
                             i.defcon = time.time() + (self.registryValue('defcon')*2)
                             if not i.god:
-                             irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
+                                irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
                             else:
-                                for channel in irc.state.channels:
-                                    if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
-                                        if not 'z' in irc.state.channels[channel].modes:
-                                            if irc.nick in list(irc.state.channels[channel].ops):
-                                                irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
-                                            else:
-                                                irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
-
+                                self.applyDefcon(irc)
                         ip = mask.split('@')[1]
                         if hilight and i.defcon and utils.net.isIPV4(ip):
                             if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
@@ -2320,13 +2314,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 if not i.god:
                                     irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
                                 else:
-                                    for channel in irc.state.channels:
-                                        if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel):
-                                            if not 'z' in irc.state.channels[channel].modes:
-                                                if irc.nick in list(irc.state.channels[channel].ops):
-                                                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
-                                                else:
-                                                    irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
+                                    self.applyDefcon (irc)
                             i.defcon = time.time()
             else:
                 if i.netsplit and text.startswith('Join rate in '):
@@ -2681,8 +2669,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 range = range
                 queue = self.getIrcQueueFor(irc,range,'klineNote',7)
                 queue.enqueue(user)
-                if len(queue) > permit:
-                    queue.reset()
+                if len(queue) == permit:
                     if not announced:
                         announced = True
                         self.logChannel(irc,"NOTE: a kline similar to *@%s seems to hit more than %s users" % (range,self.registryValue('alertOnWideKline')))
@@ -2895,14 +2882,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             # queue not reseted, that way during life, it returns True
             if not chan.called:
                 self.logChannel(irc,"INFO: [%s] ignores lifted, limits lowered due to %s abuses for %ss" % (channel,key,self.registryValue('abuseDuration',channel=channel)))
-                if self.registryValue('defconMode',channel=channel):
+                if not i.defcon:
+                    i.defcon = time.time()
                     if not i.god:
                         irc.sendMsg(ircmsgs.IrcMsg('MODE %s +p' % irc.nick))
                     else:
-                        if irc.nick in list(irc.state.channels[channel].ops) and not 'z' in list(irc.state.channels[channel].modes):
-                            irc.sendMsg(ircmsgs.IrcMsg('MODE %s +qz $~a' % channel))
-                        elif not 'z' in list(irc.state.channels[channel].modes):
-                            irc.sendMsg(ircmsgs.IrcMsg('MODE %s +oqz %s $~a' % (channel,irc.nick)))
+                        self.applyDefcon(irc)
             chan.called = time.time()
             return True
         return False
