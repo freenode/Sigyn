@@ -1754,6 +1754,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                for ip in ips:
                    ip = '%s' % ip
                    ip = ip.split(' ')[1][:-1]
+                   for item in items:
+                       if ip in item:
+                           found = item
+                           break
+                   if found:
+                       break
                    q = resolver.query(ip,'A')
                    if q:
                        for i in q:
@@ -2129,7 +2135,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 self.logChannel(irc,'IGNORED: [%s] %s (%s)' % (channel,msg.prefix,reason))
                                 matter = None
                                 if msg.nick:
-                                    irc.queueMsg(ircmsgs.notice(msg.nick,"Your actions in %s tripped automated anti-spam measures (%s), but were ignored based on your time in channel; stop now, or automated action will still be taken. If you have any questions, please don't hesitate to contact a member of staff" % (channel,publicreason)))
+                                    irc.queueMsg(ircmsgs.notice(msg.nick,"Your actions in %s tripped automated anti-spam measures (%s), but were ignored based on your time in channel. Stop now, or automated action will still be taken. If you have any questions, please don't hesitate to contact a member of staff" % (channel,publicreason)))
                     else:
                         isBanned = True
                         uid = random.randint(0,1000000)
@@ -2455,6 +2461,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             limit = self.registryValue('userFloodPermit')
             life = self.registryValue('userFloodLife')
             if limit > -1:
+                if target.startswith('freenode-connect'):
+                    return
                 queue = self.getIrcQueueFor(irc,target,'snoteFlood',life)
                 stored = False
                 for u in queue:
