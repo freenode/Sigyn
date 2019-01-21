@@ -1174,7 +1174,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            if self.registryValue('leaveChannelIfNoActivity',channel=channel) == -1:
                flag = '*'
            l = len(irc.state.channels[channel].users)
-           channels.append((l,flag,channel))
+           if not channel == self.registryValue('secretChannel') and not channel == self.registryValue('snoopChannel') and not channel == self.registryValue('reportChannel') and not channel == self.registryValue('logChannel'):
+               channels.append((l,flag,channel))
        def getKey(item):
            return item[0]
        chs = sorted(channels,key=getKey,reverse=True)
@@ -1632,15 +1633,20 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            email = i.mx[nick][0]
            badmail = i.mx[nick][1]
            mx = i.mx[nick][2]
+           freeze = i.mx[nick][3]
            del i.mx[nick]
            mask = self.prefixToMask(irc,hostmask)
            self.logChannel(irc,'SERVICE: %s registered %s with *@%s is in mxbl --> %s' % (hostmask,nick,email,mask))
 #           if i.defcon and len(email):
 #               self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'register abuses (%s)' % email)
+           self.log.info('%s :: %s / %s' % (email,badmail,freeze))
            if badmail and len(email) and len(nick):
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :BADMAIL ADD *@%s %s' % (email,mx)))
-               irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FDROP %s' % nick))
-               irc.queueMsg(ircmsgs.notice(nick,'Your account has been dropped, please register it again with a valid email address'))
+               if not freeze:
+                   irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FDROP %s' % nick))
+                   irc.queueMsg(ircmsgs.notice(nick,'Your account has been dropped, please register it again with a valid email address (no disposable temporary email)'))
+               else:
+                   irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FREEZE %s ON changed email to (%s which is in mxbl %)' % (nick,email,mx)))
        elif nick in i.tokline:
           if not nick in i.toklineresults:
               i.toklineresults[nick] = {}
@@ -1736,7 +1742,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 irc.queueMsg(ircmsgs.privmsg(nick,'Invitation denied, there are only %s users in %s (%s minimum for %s): contact staffers if needed.' % (msg.args[2],msg.args[1],self.registryValue('minimumUsersInChannel'),irc.nick)))
             del i.invites[msg.args[1]]
 
-    def resolveSnoopy (self,irc,account,email,badmail):
+    def resolveSnoopy (self,irc,account,email,badmail,freeze):
        try:
            resolver = dns.resolver.Resolver()
            resolver.timeout = 10
@@ -1773,7 +1779,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                break
            if found:
                i = self.getIrc(irc)
-               i.mx[account] = [email,badmail,found]
+               i.mx[account] = [email,badmail,found,freeze]
                irc.queueMsg(ircmsgs.IrcMsg('WHOIS %s' % account))
        except:
            pass
@@ -1781,28 +1787,29 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def handleSnoopMessage (self,irc,msg):
         (targets, text) = msg.args
         text = text.replace('\x02','')
-        if msg.nick == 'NickServ' and 'REGISTER:' in text:
-            email = text.split('@')[1]
-            account = text.split(' ')[0]
-            t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email,True))
-            t.setDaemon(True)
-            t.start()
+        #if msg.nick == 'NickServ' and 'REGISTER:' in text:
+        #    email = text.split('@')[1]
+        #    account = text.split(' ')[0]
+        #    t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email,True,False))
+        #    t.setDaemon(True)
+        #    t.start()
         if msg.nick == 'NickServ':
             src = text.split(' ')[0]
             target = ''
             if ' GROUP:' in text:
                 target = text.split('(')[1].split(')')[0]
-            elif 'SET:ACCOUNTNAME' in text:
+            elif 'SET:ACCOUNTNAME:' in text:
                 t = text.split('(')
                 if len(t) > 1:
                     target = text.split('(')[1].split(')')[0]
                 else:
                     return
-            elif 'UNGROUP' in text:
+            elif 'UNGROUP: ' in text:
                 target = text.split('UNGROUP: ')[1]
             if len(target):
                 q = self.getIrcQueueFor(irc,src,target,120)
                 q.enqueue(text)
+                self.log.info('%s > %s (%s)' % (target,text,len(q)))
                 if len(q) == 3:
                     index = 0
                     a = b = c = False
@@ -2212,7 +2219,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def handleSecretMessage (self,irc,msg):
         (targets, text) = msg.args
-        nicks = ['OperServ']
+        nicks = ['OperServ','NickServ']
         i = self.getIrc(irc)
         if msg.nick in nicks:
             if text.startswith('klinechan_check_join(): klining '):
@@ -2234,12 +2241,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 t.start()
                             else:
                                 self.prefixToMask(irc,'*!*@%s' % ip,'',True)
-            if text.startswith('REGISTER:BADEMAIL: '):
+            if text.startswith('VERIFY:REGISTER: '):
                text = text.replace('\x02','')
                t = text.split(' ')
-               account = t[1]
-               email = t[3].split('@')[1]
-               t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email,False))
+               account = t[0]
+               email = text.split('@')[1].replace(')','')
+               t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email,True,False))
                t.setDaemon(True)
                t.start()
             if text.startswith('sendemail():') and self.registryValue('registerPermit') > 0:
@@ -2273,7 +2280,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        for m in q:
                            ms.append(q)
                        self.logChannel(irc,'SERVICE: loads of registration to %s (%s)' % (email,', '.join(ms)))
-
             if 'AKICK:ADD:' in text or 'AKICK:DEL:' in text:
                life = self.registryValue('decloakLife')
                limit = self.registryValue('decloakPermit')
@@ -2285,6 +2291,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                    if len(q) > limit:
                        q.reset()
                        self.logChannel(irc,'SERVICE: [%s] %s suspicious AKICK behaviour' % (target,origin))
+            if 'VERIFY:EMAILCHG:' in text:
+                account = text.split(' VERIFY:EMAILCHG')[0]
+                email = text.split('(email: ')[1].split(')')[0].split('@')[1]
+                t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email,True,True))
+                t.setDaemon(True)
+                t.start()
 
     def handleReportMessage (self,irc,msg):
         (targets, text) = msg.args
