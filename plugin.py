@@ -147,7 +147,7 @@ addConverter('getPatternAndMatcher', getPatternAndMatcher)
 
 class Ircd (object):
 
-    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx','tokline','toklineresults','dlines', 'invites', 'nicks')
+    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx','tokline','toklineresults','dlines', 'invites', 'nicks', 'domains')
 
     def __init__(self,irc):
         self.irc = irc
@@ -187,7 +187,16 @@ class Ircd (object):
         self.dlines = []
         self.invites = {}
         self.nicks = {}
-        
+        self.domains = []
+        try:
+            with open('domains.txt', 'r') as content_file:
+                file = content_file.read()
+                for line in file.split('\n'):
+                    if line.startswith('- '):
+                        for word in line.split('- '):
+                            self.domains.append(word.strip().replace("'",''))
+        except:
+            pass
 
     def __repr__(self):
         return '%s(patterns=%r, queues=%r, channels=%r, pending=%r, logs=%r, limits=%r, whowas=%r, klines=%r)' % (self.__class__.__name__,
@@ -654,7 +663,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         text = text.encode('utf-8')
         for k in i.patterns:
             pattern = i.patterns[k]
-            self.log.info('%s : %s (%s)' % (pattern.uid,text,pattern.match(text)))
+            #self.log.info('%s : %s (%s)' % (pattern.uid,text,pattern.match(text)))
             if pattern.match(text):
                 patterns.append('#%s' % pattern.uid)
         if len(patterns):
@@ -1012,10 +1021,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 for ip in ips:
                     if not str(ip) in L:
                         L.append(str(ip))
-            self.log.debug('%s resolved as %s' % (prefix,L))
+            #self.log.debug('%s resolved as %s' % (prefix,L))
             if len(L) == 1:
                 h = L[0]
-                self.log.debug('%s is resolved as %s@%s' % (prefix,ident,h))
+                #self.log.debug('%s is resolved as %s@%s' % (prefix,ident,h))
                 if dnsbl and utils.net.isIPV4(h):
                     if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
                         t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', h),args=(irc,h,self.registryValue('droneblHost'),self.registryValue('droneblKey'),comment))
@@ -1639,14 +1648,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            self.logChannel(irc,'SERVICE: %s registered %s with *@%s is in mxbl --> %s' % (hostmask,nick,email,mask))
 #           if i.defcon and len(email):
 #               self.kline(irc,hostmask,mask,self.registryValue('klineDuration'),'register abuses (%s)' % email)
-           self.log.info('%s :: %s / %s' % (email,badmail,freeze))
+           #self.log.info('%s :: %s / %s' % (email,badmail,freeze))
            if badmail and len(email) and len(nick):
-               irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :BADMAIL ADD *@%s %s' % (email,mx)))
                if not freeze:
-                   irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FDROP %s' % nick))
                    irc.queueMsg(ircmsgs.notice(nick,'Your account has been dropped, please register it again with a valid email address (no disposable temporary email)'))
-               else:
-                   irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FREEZE %s ON changed email to (%s which is in mxbl %)' % (nick,email,mx)))
        elif nick in i.tokline:
           if not nick in i.toklineresults:
               i.toklineresults[nick] = {}
@@ -1725,7 +1730,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def do322 (self,irc,msg):
         i = self.getIrc(irc)
         if msg.args[1] in i.invites:
-            self.log.debug('%s :: %s' % (msg.args[1],msg.args[2]))
+            #self.log.debug('%s :: %s' % (msg.args[1],msg.args[2]))
             if int(msg.args[2]) > self.registryValue('minimumUsersInChannel'):
                 self.setRegistryValue('lastActionTaken',time.time(),channel=msg.args[1])
                 irc.queueMsg(ircmsgs.join(msg.args[1]))
@@ -1743,46 +1748,59 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             del i.invites[msg.args[1]]
 
     def resolveSnoopy (self,irc,account,email,badmail,freeze):
-       try:
-           resolver = dns.resolver.Resolver()
-           resolver.timeout = 10
-           resolver.lifetime = 10
-           found = False
-           items = self.registryValue('mxbl')
-           for item in items:
-               if email in item:
-                   found = True
-                   break
-           ips = None
-           if not found:
-               ips = resolver.query(email,'MX')
-           if ips:
-               for ip in ips:
-                   ip = '%s' % ip
-                   ip = ip.split(' ')[1][:-1]
-                   for item in items:
-                       if ip in item:
-                           found = item
-                           break
-                   if found:
+       resolver = dns.resolver.Resolver()
+       resolver.timeout = 10
+       resolver.lifetime = 10
+       found = ''
+       items = self.registryValue('mxbl')
+       #self.log.info('checking %s for %s' % (email,account))
+       for item in items:
+           if email in item:
+               found = item
+               break
+       i = self.getIrc(irc)
+       for domain in i.domains:
+           if email in domain:
+               found = domain
+               break
+       ips = None
+       if not len(found):
+           ips = resolver.query(email,'MX')
+       if ips:
+           for ip in ips:
+               ip = '%s' % ip
+               #self.log.info('%s mx is %s' % (email,ip))
+               ip = ip.split(' ')[1][:-1]
+               for item in items:
+                   if ip in item:
+                       found = item
                        break
-                   q = resolver.query(ip,'A')
-                   if q:
-                       for i in q:
-                           i = '%s' % i
-                           items = self.registryValue('mxbl')
-                           for item in items:
-                               if i in item:
-                                   found = item
-                                   break
-                           if found:
+               if len(found):
+                   break
+               q = resolver.query(ip,'A')
+               if q:
+                   for i in q:
+                       i = '%s' % i
+                       #self.log.info('%s ip is %s' % (ip,i))
+                       for item in items:
+                           if i in item:
+                               found = ip
                                break
-           if found:
-               i = self.getIrc(irc)
-               i.mx[account] = [email,badmail,found,freeze]
-               irc.queueMsg(ircmsgs.IrcMsg('WHOIS %s' % account))
-       except:
-           pass
+                       if len(found):
+                           break
+               if len(found):
+                   break
+       #self.log.info('checking mxbl %s: %s' % (email,found))
+       if len(found):
+           i = self.getIrc(irc)
+           i.mx[account] = [email,badmail,found,freeze]
+           if badmail and len(email):
+               irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :BADMAIL ADD *@%s %s' % (email,found)))
+               if not freeze:
+                   irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FDROP %s' % account))
+               else:
+                   irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FREEZE %s ON changed email to (%s which is in mxbl %)' % (account,email,found)))               
+           irc.queueMsg(ircmsgs.IrcMsg('WHOIS %s' % account))
 
     def handleSnoopMessage (self,irc,msg):
         (targets, text) = msg.args
@@ -1809,7 +1827,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if len(target):
                 q = self.getIrcQueueFor(irc,src,target,120)
                 q.enqueue(text)
-                self.log.info('%s > %s (%s)' % (target,text,len(q)))
+                #self.log.info('%s > %s (%s)' % (target,text,len(q)))
                 if len(q) == 3:
                     index = 0
                     a = b = c = False
@@ -2241,12 +2259,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                 t.start()
                             else:
                                 self.prefixToMask(irc,'*!*@%s' % ip,'',True)
-            if text.startswith('VERIFY:REGISTER: '):
-               text = text.replace('\x02','')
+            if 'VERIFY:REGISTER: ' in text:
                t = text.split(' ')
                account = t[0]
                email = text.split('@')[1].replace(')','')
-               t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email,True,False))
+               self.log.info('%s verify:register %s' % (account,email))
+               t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', account),args=(irc,account,email,True,False))
                t.setDaemon(True)
                t.start()
             if text.startswith('sendemail():') and self.registryValue('registerPermit') > 0:
@@ -2973,7 +2991,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         return False
 
     def isChannelFlood (self,irc,msg,channel,mask,text):
-        if len(text) == 0 or len(text) > self.registryValue('floodMinimum',channel=channel) or text.isdigit():
+        if len(text) == 0 or len(text) >= self.registryValue('floodMinimum',channel=channel) or text.isdigit():
             return self.isBadOnChannel(irc,channel,'flood',mask)
         return False
 
