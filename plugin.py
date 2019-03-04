@@ -147,7 +147,7 @@ addConverter('getPatternAndMatcher', getPatternAndMatcher)
 
 class Ircd (object):
 
-    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx','tokline','toklineresults','dlines', 'invites', 'nicks', 'domains')
+    __slots__ = ('irc', 'channels','whowas','klines','queues','opered','defcon','pending','logs','limits','netsplit','ping','servers','resolving','stats','patterns','throttled','lastDefcon','god','mx','tokline','toklineresults','dlines', 'invites', 'nicks', 'domains', 'cleandomains')
 
     def __init__(self,irc):
         self.irc = irc
@@ -187,14 +187,15 @@ class Ircd (object):
         self.dlines = []
         self.invites = {}
         self.nicks = {}
-        self.domains = []
+        self.domains = {}
+        self.cleandomains = {}
         try:
-            with open('domains.txt', 'r') as content_file:
+            with open('plugins/Sigyn/domains.txt', 'r') as content_file:
                 file = content_file.read()
                 for line in file.split('\n'):
                     if line.startswith('- '):
                         for word in line.split('- '):
-                            self.domains.append(word.strip().replace("'",''))
+                            self.domains[word.strip().replace("'",'')] = word.strip().replace("'",'')
         except:
             pass
 
@@ -399,6 +400,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.collecting = False
         self.starting = world.starting
         self.recaps = re.compile("[A-Z]")
+        self.ipfiltered = {}
 
     def collectnick (self,irc,msg,args):
         """
@@ -672,6 +674,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             irc.reply('No matches')
     checkpattern = wrap(checkpattern,['owner','text'])
 
+    def ismxbl (self,irc,msg,args,text):
+        """[domain]
+
+        return True if domain in domains.txt"""
+        i = self.getIrc(irc)
+        t = text.strip()
+        self.log.info('%s' % ','.join(i.domains))
+        if t in i.domains:
+           irc.reply('%s is in domains.txt' % t)
+        irc.replySuccess()
+    ismxbl = wrap (ismxbl,['owner','text'])
+    
+    
     def lspattern (self,irc,msg,args,optlist,pattern):
         """[--deep] <id|pattern>
 
@@ -786,7 +801,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
           add <ips> on dronebl"""
        for ip in ips:
-           if utils.net.isIPV4(ip):
+           if utils.net.isIPV4(ip) or utils.net.bruteIsIPV6(ip):
                t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),comment))
                t.setDaemon(True)
                t.start()
@@ -798,7 +813,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
            remove <ips> from dronebl"""
         for ip in ips:
-            if utils.net.isIPV4(ip):
+            if utils.net.isIPV4(ip) or utils.net.bruteIsIPV6(ip):
                 t = world.SupyThread(target=self.removeDnsbl,name=format('rmDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
                 t.setDaemon(True)
                 t.start()
@@ -1025,14 +1040,15 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             if len(L) == 1:
                 h = L[0]
                 #self.log.debug('%s is resolved as %s@%s' % (prefix,ident,h))
-                if dnsbl and utils.net.isIPV4(h):
-                    if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
-                        t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', h),args=(irc,h,self.registryValue('droneblHost'),self.registryValue('droneblKey'),comment))
-                        t.setDaemon(True)
-                        t.start()
-                        if prefix in i.resolving:
-                            del i.resolving[prefix]
-                        return
+                if dnsbl:
+                    if utils.net.isIPV4(h) or utils.net.bruteIsIPV6(h):
+                        if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                            t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', h),args=(irc,h,self.registryValue('droneblHost'),self.registryValue('droneblKey'),comment))
+                            t.setDaemon(True)
+                            t.start()
+                            if prefix in i.resolving:
+                                del i.resolving[prefix]
+                            return
                 self.cache[prefix] = '%s@%s' % (ident,h)
             else:
                 self.cache[prefix] = '%s@%s' % (ident,host)
@@ -1759,10 +1775,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                found = item
                break
        i = self.getIrc(irc)
-       for domain in i.domains:
-           if email in domain:
-               found = domain
-               break
+       if email in i.domains:
+           found = email
        ips = None
        if not len(found):
            ips = resolver.query(email,'MX')
@@ -1791,8 +1805,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                if len(found):
                    break
        #self.log.info('checking mxbl %s: %s' % (email,found))
+       i = self.getIrc(irc)
        if len(found):
-           i = self.getIrc(irc)
            i.mx[account] = [email,badmail,found,freeze]
            if badmail and len(email):
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :BADMAIL ADD *@%s %s' % (email,found)))
@@ -1801,16 +1815,20 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                else:
                    irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :FREEZE %s ON changed email to (%s which is in mxbl %)' % (account,email,found)))               
            irc.queueMsg(ircmsgs.IrcMsg('WHOIS %s' % account))
+       else:
+           i.cleandomains[email] = True
 
     def handleSnoopMessage (self,irc,msg):
         (targets, text) = msg.args
         text = text.replace('\x02','')
-        #if msg.nick == 'NickServ' and 'REGISTER:' in text:
-        #    email = text.split('@')[1]
-        #    account = text.split(' ')[0]
-        #    t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email,True,False))
-        #    t.setDaemon(True)
-        #    t.start()
+        if msg.nick == 'NickServ' and 'REGISTER:' in text:
+            email = text.split('@')[1]
+            account = text.split(' ')[0]
+            i = self.getIrc(irc)
+            if not email in i.cleandomains:
+                t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', email),args=(irc,account,email,True,False))
+                t.setDaemon(True)
+                t.start()
         if msg.nick == 'NickServ':
             src = text.split(' ')[0]
             target = ''
@@ -1927,7 +1945,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if chan.called:
                     if time.time() - chan.called > self.registryValue('abuseDuration',channel=channel):
                         chan.called = False
-                        self.logChannel(irc,'INFO: [%s] returns to regular state' % channel)
+                        if not i.defcon:
+                            self.logChannel(irc,'INFO: [%s] returns to regular state' % channel)
                         if irc.isChannel(channel) and self.registryValue('defconMode',channel=channel) and not i.defcon:
                             if 'z' in irc.state.channels[channel].modes and irc.nick in list(irc.state.channels[channel].ops) and not 'm' in irc.state.channels[channel].modes:
                                 irc.queueMsg(ircmsgs.IrcMsg('MODE %s q' % channel))
@@ -2180,11 +2199,12 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             else:
                                 self.applyDefcon(irc)
                         ip = mask.split('@')[1]
-                        if hilight and i.defcon and utils.net.isIPV4(ip):
-                            if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
-                                t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),reason))
-                                t.setDaemon(True)
-                                t.start()
+                        if hilight and i.defcon:
+                            if utils.net.bruteIsIPV6(ip) or utils.net.isIPV4(ip):
+                                if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                                    t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),reason))
+                                    t.setDaemon(True)
+                                    t.start()
                         self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
 
                 if not isBanned:
@@ -2252,21 +2272,22 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         a = text.split('klinechan_check_join(): klining ')[1].split(' ')
                         a = a[0]
                         ip = a.split('@')[1]
-                        if utils.net.isIPV4(ip):
+                        if utils.net.isIPV4(ip) or utils.net.bruteIsIPV6(ip):
                             if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
                                 t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),found))
                                 t.setDaemon(True)
                                 t.start()
                             else:
                                 self.prefixToMask(irc,'*!*@%s' % ip,'',True)
-            if 'VERIFY:REGISTER: ' in text:
-               t = text.split(' ')
-               account = t[0]
-               email = text.split('@')[1].replace(')','')
-               self.log.info('%s verify:register %s' % (account,email))
-               t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', account),args=(irc,account,email,True,False))
-               t.setDaemon(True)
-               t.start()
+#            if 'VERIFY:REGISTER: ' in text:
+#               t = text.split(' ')
+#               account = t[0]
+#               email = text.split('@')[1].replace(')','')
+#               if not email in i.cleandomains:
+#                   self.log.info('%s verify:register %s' % (account,email))
+#                   t = world.SupyThread(target=self.resolveSnoopy,name=format('Snoopy %s', account),args=(irc,account,email,True,False))
+#                   t.setDaemon(True)
+#                   t.start()
             if text.startswith('sendemail():') and self.registryValue('registerPermit') > 0:
                text = text.replace('sendemail():','')
                pattern = r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
@@ -2383,7 +2404,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         a = text.split('Killing client ')[1]
                         a = a.split(')')[0]
                         ip = a.split('@')[1]
-                        if utils.net.isIPV4(ip):
+                        if utils.net.isIPV4(ip) or utils.net.bruteIsIPV6(ip):
                             if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
                                 t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),found))
                                 t.setDaemon(True)
@@ -2474,8 +2495,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             queue.reset()
                             queue = self.getIrcQueueFor(irc,target,'snoteFloodJoin',life)
                             queue.enqueue(text)
-                            if len(queue) > 1 and self.registryValue('lastActionTaken',channel=target) > 0.0:
-                                if not target in irc.state.channels:
+                            if len(queue) > 1 or i.defcon:
+                                if self.registryValue('lastActionTaken',channel=target) > 0.0 and not target in irc.state.channels:
                                     t = time.time() - (self.registryValue('leaveChannelIfNoActivity',channel=target) * 24 * 3600) + 1800
                                     self.setRegistryValue('lastActionTaken',t,channel=target)
                                     irc.sendMsg(ircmsgs.join(target))
@@ -2639,11 +2660,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 uid = random.randint(0,1000000)
                 self.kline(irc,user,mask,self.registryValue('klineDuration'),'%s - ns id flood (%s)' % (uid,', '.join(a)))
                 self.logChannel(irc,"BAD: %s (ns id flood %s - %s)" % (user,', '.join(a),uid))
-                if i.defcon and utils.net.isIPV4(mask.split('@')[1]):
-                    if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
-                        t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', mask.split('@')[1]),args=(irc,mask.split('@')[1],self.registryValue('droneblHost'),self.registryValue('droneblKey'),'ns id flood (%s)' % ','.join(a)))
-                        t.setDaemon(True)
-                        t.start()
+                if i.defcon:
+                    ip = mask.split('@')[1]
+                    if utils.net.bruteIsIPV6(ip) or utils.net.bruteIsIPV4(ip):
+                        if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                            t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),'ns id flood (%s)' % ','.join(a)))
+                            t.setDaemon(True)
+                            t.start()
         # user receive nickserv's id
         queue = self.getIrcQueueFor(irc,target,'snoteId',life)
         queue.enqueue(user)
@@ -2674,11 +2697,13 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     uid = random.randint(0,1000000)
                     self.kline(irc,u,mask,self.registryValue('klineDuration'),'%s - ns id flood on %s' % (uid,target))
                     self.logChannel(irc,"BAD: %s (ns id flood on %s - %s)" % (u,target,uid))
-                    if i.defcon and utils.net.isIPV4(mask.split('@')[1]):
-                        if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
-                            t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', mask.split('@')[1]),args=(irc,mask.split('@')[1],self.registryValue('droneblHost'),self.registryValue('droneblKey'),'ns id flood on %s' % target))
-                            t.setDaemon(True)
-                            t.start()
+                    if i.defcon:
+                        ip = mask.split('@')[1]
+                        if utils.net.bruteIsIPV6(ip) or utils.net.bruteIsIPV4(ip):
+                            if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                                t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),'ns id flood on %s' % target))
+                                t.setDaemon(True)
+                                t.start()
 
     def handleKline(self,irc,text):
         i = self.getIrc(irc)
@@ -2827,7 +2852,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         reason = text.split('!dnsbl')[1].replace(']','').strip()
                     else:
                         reason = hasPattern
-                    if utils.net.isIPV4(ip):
+                    if utils.net.isIPV4(ip) or utils.net.bruteIsIPV6(ip):
                         if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
                             t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),reason))
                             t.setDaemon(True)
@@ -2836,6 +2861,19 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         self.prefixToMask(irc,'*!*@%s' % ip,'',True,reason)
             elif 'failed login attempts to' in text and 'SASL' in text:
                 self.handleSaslFailure(irc,text)
+            elif text.startswith('FILTER'):
+                ip = text.split('[')[1].split(']')[0]
+                if utils.net.isIPV4(ip) or utils.net.bruteIsIPV6(ip):
+                    if not ip in self.ipfiltered:
+                        q = self.getIrcQueueFor(irc,'serverSideFiltering',ip,20)
+                        q.enqueue(ip)
+                        reason = 'Server Side Filtering'
+                        if len(q) == 3:
+                            self.ipfiltered[ip] = True
+                            if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                                t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),reason))
+                                t.setDaemon(True)
+                                t.start() 
         else:
             self.handleMsg(irc,msg,True)
 
@@ -2919,7 +2957,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             # chan.buffers[kind][key].reset()
             # queue not reseted, that way during life, it returns True
             if not chan.called:
-                self.logChannel(irc,"INFO: [%s] ignores lifted, limits lowered due to %s abuses for %ss" % (channel,key,self.registryValue('abuseDuration',channel=channel)))
+                if not i.defcon:
+                    self.logChannel(irc,"INFO: [%s] ignores lifted, limits lowered due to %s abuses for %ss" % (channel,key,self.registryValue('abuseDuration',channel=channel)))
                 if not i.defcon:
                     i.defcon = time.time()
                     if not i.god:
@@ -3362,8 +3401,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 if limit > -1:
                     b = self.isBadOnChannel(irc,channel,'massJoinHost',mask)
                     if b:
+                        if not mask in flags:
+                            flags.append(mask)
                         self.logChannel(irc,'NOTE: [%s] %s (%s)' % (channel,b,mask))
-                        flags.append(mask)
                 life = self.registryValue('massJoinNickLife',channel=channel)
                 limit = self.registryValue('massJoinNickPermit',channel=channel)
                 ## massJoin similar nicks
@@ -3385,6 +3425,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if flag and len(pattern) > length and not 'Guest' in pattern:
                         b = self.isBadOnChannel(irc,channel,key,pattern)
                         if b:
+                            if not mask in flags:
+                                flags.append(mask)
                             self.logChannel(irc,'NOTE: [%s] %s (%s)' % (channel,b,pattern))
                     logs.enqueue(msg.nick)
                 ## massJoin similar gecos
@@ -3408,9 +3450,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if flag and len(pattern) > length:
                         b = self.isBadOnChannel(irc,channel,key,pattern)
                         if b:
+                            if not mask in flags:
+                                flags.append(mask)
                             self.logChannel(irc,'NOTE: [%s] %s (%s)' % (channel,b,pattern))
                     logs.enqueue(gecos)
-                if self.hasAbuseOnChannel(irc,channel,'massJoinHost') and len(flags) > 0 and self.registryValue('massJoinTakeAction',channel=channel):
+                if self.hasAbuseOnChannel(irc,channel,'massJoin') and len(flags) > 0 and self.registryValue('massJoinTakeAction',channel=channel):
                     for u in flags:
                         self.kill(irc,msg.nick,self.registryValue('killMessage',channel=channel))
                         uid = random.randint(0,1000000)
