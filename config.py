@@ -107,6 +107,11 @@ conf.registerGlobalValue(Sigyn, 'lagPermit',
 conf.registerGlobalValue(Sigyn, 'lagInterval',
      registry.PositiveInteger(1, """interval between two check about lag, also used to garbage collect useless items in internal state"""))
 
+conf.registerGlobalValue(Sigyn, 'serverFilteringPermit',
+     registry.Integer(-1, """-1 to disable, enable dnsbling and klining when server trigger filtering messages"""))
+conf.registerGlobalValue(Sigyn, 'serverFilteringLife',
+     registry.PositiveInteger(1, """life of message in buffer in seconds"""))
+
 conf.registerGlobalValue(Sigyn, 'ghostPermit',
      registry.Integer(-1, """max number of ghost connections allowed"""))
 

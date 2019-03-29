@@ -1843,19 +1843,20 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             elif 'UNGROUP: ' in text:
                 target = text.split('UNGROUP: ')[1]
             if len(target):
-                q = self.getIrcQueueFor(irc,src,target,120)
+                q = self.getIrcQueueFor(irc,src,'nsAccountGroup',120)
                 q.enqueue(text)
-                #self.log.info('%s > %s (%s)' % (target,text,len(q)))
+                self.log.info('%s > %s (%s)' % (target,text,len(q)))
                 if len(q) == 3:
                     index = 0
                     a = b = c = False
                     for m in q:
-                       if 'GROUP' in m and index == 0:
+                       if ' GROUP:' in m and index == 0:
                            a = True
-                       elif 'SET:ACCOUNTNAME' in m and index == 1:
+                       elif ' SET:ACCOUNTNAME:' in m and index == 1:
                            b = True
-                       elif 'UNGROUP' in m and index == 2:
+                       elif ' UNGROUP:' in m and index == 2:
                            c = True
+                       index = index + 1
                     q.reset()
                     if a and b and c: 
                         self.logChannel(irc,"SERVICE: %s suspicious evades/abuses" % src)
@@ -2862,18 +2863,20 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             elif 'failed login attempts to' in text and 'SASL' in text:
                 self.handleSaslFailure(irc,text)
             elif text.startswith('FILTER'):
-                ip = text.split('[')[1].split(']')[0]
+                ip = text.split(' ')[2].split('[')[1].split(']')[0]
                 if utils.net.isIPV4(ip) or utils.net.bruteIsIPV6(ip):
                     if not ip in self.ipfiltered:
-                        q = self.getIrcQueueFor(irc,'serverSideFiltering',ip,20)
-                        q.enqueue(ip)
-                        reason = 'Server Side Filtering'
-                        if len(q) == 3:
-                            self.ipfiltered[ip] = True
-                            if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
-                                t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),reason))
-                                t.setDaemon(True)
-                                t.start() 
+                        if self.registryValue('serverFilteringPermit') > -1:
+                        
+                            q = self.getIrcQueueFor(irc,'serverSideFiltering',ip,self.registryValue('serverFilteringLife'))
+                            q.enqueue(ip)
+                            reason = 'Server Side Filtering'
+                            if len(q) > self.registryValue('serverFilteringPermit'):
+                                self.ipfiltered[ip] = True
+                                if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
+                                    t = world.SupyThread(target=self.fillDnsbl,name=format('fillDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey'),reason))
+                                    t.setDaemon(True)
+                                    t.start() 
         else:
             self.handleMsg(irc,msg,True)
 
@@ -3375,7 +3378,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 chan = self.getChan(irc,channel)
                 t = time.time()
                 mask = self.prefixToMask(irc,msg.prefix,channel)
-                if isCloaked(msg.prefix,self):
+                if isCloaked(msg.prefix,self) or account:
                     t = t - self.registryValue('ignoreDuration',channel=channel) - 1
                 chan.nicks[msg.nick] = [t,msg.prefix,mask,gecos,account]
                 if self.registryValue('ignoreRegisteredUser',channel=channel):
