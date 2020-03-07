@@ -430,30 +430,30 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             found = False
             for line in answer.split('\n'):
                 if line.find('listed="1"') != -1:
-                    if line.find('type="18"') != -1:
-                        self.logChannel(irc,'RMDNSBL: %s type 18 found, not removed.' % ip)
-                        continue
                     id = line.split('id="')[1]
                     id = id.split('"')[0]
+                    if line.find('type="18"') != -1:
+                        self.logChannel(irc,'RMDNSBL: %s (%s) not removed: is type 18' % (ip,id))
+                        continue
                     data = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><remove id='"+id+"' /></request>"
                     found = True
                     try:
                         r = requests.post(droneblHost,data=data,headers=headers)
                         response = r.text.replace('\n','')
                         if "You are not authorized to remove this incident" in response:
-                            self.logChannel(irc,'RMDNSBL: You are not authorized to remove this incident %s (%s)' % (ip,id))
+                            self.logChannel(irc,'RMDNSBL: %s (%s) failed: You are not authorized to remove this incident' % (ip,id))
                         else:
-                            self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,id))
+                            self.logChannel(irc,'RMDNSBL: %s (%s) removed' % (ip,id))
                     except:
-                        self.logChannel(irc,'RMDNSBL: %s (%s) unknow error' % (ip,id))
+                        self.logChannel(irc,'RMDNSBL: %s (%s) failed: unknown error' % (ip,id))
             if not found:
-                self.logChannel(irc,'RMDNSBL: %s (not listed)' % ip)
+                self.logChannel(irc,'RMDNSBL: %s (none) not removed: no listing found' % ip)
         data = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
         r = requests.post(droneblHost,data=data,headers=headers)
         if r.status_code == 200:
             check(r.text)
         else:
-            self.logChannel(irc,'RMDNSBL: %s (%s)' % (ip,r.status_code))
+            self.logChannel(irc,'RMDNSBL: %s (unknown) failed: status code %s' % (ip,r.status_code))
 
     def fillDnsbl (self,irc,ip,droneblHost,droneblKey,comment=None):
         headers = {
