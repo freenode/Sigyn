@@ -2899,7 +2899,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     break
 
     def handleClient (self,irc,text):
-        i = self.getIrc(irc):
+        i = self.getIrc(irc)
+
         #if i.defcon:
             
 
