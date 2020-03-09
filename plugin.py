@@ -460,6 +460,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             'Content-Type' : 'text/xml'
         }
         def check(answer):
+            self.log.info ('fillDnsbl, answered %s' % ip)
             if 'listed="1"' in answer:
                 self.logChannel(irc,'DNSBL: %s (already listed)' % ip)
                 return
@@ -498,13 +499,16 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 self.logChannel(irc,'DNSBL: %s (%s,type:%s)' % (ip,comment,type))
             else:
                 self.logChannel(irc,'DNSBL: %s' % ip)
+        self.log.info('fillDnsbl, checking %s' % ip)
         data = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
-        r = requests.post(droneblHost,data=data,headers=headers)
-        if r.status_code == 200:
-            check(r.text)
-        else:
-            self.logChannel(irc,'DNSBL: %s (%s)' % (ip,r.status_code))
-            #except:
+        try:
+            r = requests.post(droneblHost,data=data,headers=headers,timeout=9)
+            if r.status_code == 200:
+                check(r.text)
+            else:
+                self.logChannel(irc,'DNSBL: %s (%s)' % (ip,r.status_code))
+        except requests.exceptions.RequestException as e:
+            self.logChannel(irc,'DNSBL: %s (%s)' % (ip,e))
             #    self.logChannel(irc,'DNSBL: TimeOut for %s' % ip)
             #    self.pendingAddDnsbl = False
             #    if len(self.addDnsblQueue) > 0:
@@ -1384,7 +1388,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 for u in i.klinednicks:
                     if aa == u:
                         self.logChannel(irc,"SERVICE: %s (%s) evades a kline from the last 24h (account-notify)" % (msg.prefix,acc))
-                        del i.klinednicks[u]
                         break
             for channel in irc.state.channels:
                 if irc.isChannel(channel):
@@ -1933,7 +1936,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         oldAccount = oldAccount.lower()
                         for u in i.klinednicks:
                             if u == oldAccount:
-                                del i.klinednicks[u]
                                 self.logChannel(irc,"SERVICE: %s was klined today on (%s)" % (src,oldAccount))
                                 if not src in i.tokline:
                                     i.toklineresults[src] = {}
@@ -2896,6 +2898,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     irc.sendMsg(ircmsgs.IrcMsg('WHOIS %s %s' % (user,user)))
                     break
 
+    def handleClient (self,irc,text):
+        i = self.getIrc(irc):
+        #if i.defcon:
+            
+
     def doNotice (self,irc,msg):
         (targets, text) = msg.args
         if len(targets) and targets[0] == '*':
@@ -3521,7 +3528,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 aa = account.lower()
                 for u in i.klinednicks:
                     if aa == u:
-                        del i.klinednicks[u]
                         self.logChannel(irc,"SERVICE: %s (%s) evades a kline from the last 24h (extended-join)" % (msg.prefix,account))
                         break
         for channel in channels:
