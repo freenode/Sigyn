@@ -1385,10 +1385,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 acc = None
             else:
                 aa = acc.lower()
-                for u in i.klinednicks:
-                    if aa == u:
-                        self.logChannel(irc,"SERVICE: %s (%s) evades a kline from the last 24h (account-notify)" % (msg.prefix,acc))
-                        break
+                #for u in i.klinednicks:
+                #    if aa == u:
+                #        self.logChannel(irc,"SERVICE: %s (%s) evades a kline from the last 24h (account-notify)" % (msg.prefix,acc))
+                #        break
             for channel in irc.state.channels:
                 if irc.isChannel(channel):
                     chan = self.getChan(irc,channel)
@@ -1473,8 +1473,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             klineMessage = self.registryValue('klineMessage')
         canKline = not self.registryValue('useWhoWas')
         i.klines[mask] = mask
+        if "bc.googleusercontent.com" in prefix:
+            reason = reason + ' !dnsbl Unknown spambot or drone'
         if canKline and '/' in mask:
-            if '@gateway' in mask or '@nat' in mask:
+            if '@gateway' in mask or '@nat/' in mask:
                 canKline = True
             else:
                 canKline = False
@@ -1567,6 +1569,14 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             irc.queueMsg(ircmsgs.who(channel))
         irc.replySuccess()
     resync = wrap(resync,['owner'])
+
+    def lethalaccount (self,irc,msg,args,text):
+        """add <accountname> to lethal
+           available during 24h"""
+        i = self.getIrc(irc)
+        i.klinednicks.enqueue(text.lower())
+        irc.replySuccess()
+    lethalaccount = wrap(lethalaccount,['owner','text'])
 
     def cleanup (self,irc):
         i = self.getIrc(irc)
@@ -1936,7 +1946,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         oldAccount = oldAccount.lower()
                         for u in i.klinednicks:
                             if u == oldAccount:
-                                self.logChannel(irc,"SERVICE: %s was klined today on (%s)" % (src,oldAccount))
+                                self.logChannel(irc,"SERVICE: %s was klined today on (%s), enforcing" % (src,oldAccount))
                                 if not src in i.tokline:
                                     i.toklineresults[src] = {}
                                     i.toklineresults[src]['kind'] = 'evade'
@@ -3527,10 +3537,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 account = None
             else:
                 aa = account.lower()
-                for u in i.klinednicks:
-                    if aa == u:
-                        self.logChannel(irc,"SERVICE: %s (%s) evades a kline from the last 24h (extended-join)" % (msg.prefix,account))
-                        break
+                #for u in i.klinednicks:
+                #    if aa == u:
+                #        self.logChannel(irc,"SERVICE: %s (%s) evades a kline from the last 24h (extended-join)" % (msg.prefix,account))
+                #        break
         for channel in channels:
             if ircutils.isChannel(channel) and channel in irc.state.channels:
                 if self.registryValue('ignoreChannel',channel):
@@ -3678,8 +3688,16 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             #self.kline(irc,msg.prefix,mask,self.registryValue('klineDuration'),'%s in %s' % (bad,channel))
                             self.logChannel(irc,"IGNORED: [%s] %s (Part's message %s) : %s" % (channel,msg.prefix,bad,reason))
                     if not isBanned:
+                        life = self.registryValue('abuseLife',channel=channel)
+                        if self.hasAbuseOnChannel(irc,channel,'cycle') and time.time() - chan.nicks[msg.nick][0] < life:
+                            isBanned = True
+                            uid = random.randint(0,1000000)
+                            log = "BAD: [%s] %s (cycle abuse - %s)" % (channel,msg.prefix,uid)
+                            comment = '%s - cycle abuse in %s' % (uid,channel)
+                            self.ban(irc,msg.nick,msg.prefix,mask,self.registryValue('klineDuration'),comment,self.registryValue('klineMessage'),log)
+                            self.setRegistryValue('lastActionTaken',time.time(),channel=channel)
                         flag = ircdb.makeChannelCapability(channel, 'joinSpamPart')
-                        if ircdb.checkCapability(msg.prefix, flag):
+                        if ircdb.checkCapability(msg.prefix, flag) and not isBanned:
                             limit = self.registryValue('joinSpamPartPermit',channel=channel)
                             if limit > -1:
                                 kind = 'joinSpamPart'
