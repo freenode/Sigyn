@@ -1058,9 +1058,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         elif utils.net.bruteIsIPV6(h):
             # noteworthy IPv6 allocation information
             # - linode assigns a /128 by default. can also offer /56, /64 & /116
+            # - xfinity (comcast) has been reported as offering /60
             # - hurricane electric tunnel brokers get a /48
 
-            prefixes = [120, 118, 116, 114, 112, 110, 64, 56, 48]
+            prefixes = [120, 118, 116, 114, 112, 110, 64, 60, 56, 48]
         else:
             return [h]
 
