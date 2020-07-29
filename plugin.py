@@ -1056,7 +1056,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if utils.net.isIPV4(h):
             prefixes = [27, 26, 25, 24]
         elif utils.net.bruteIsIPV6(h):
-            prefixes = [120, 118, 116, 114, 112, 110, 64]
+            # noteworthy IPv6 allocation information
+            # - linode assigns a /128 by default. can also offer /56, /64 & /116
+            # - hurricane electric tunnel brokers get a /48
+
+            prefixes = [120, 118, 116, 114, 112, 110, 64, 56, 48]
         else:
             return [h]
 
