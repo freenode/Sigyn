@@ -1454,7 +1454,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             (nick,ident,host) = ircutils.splitHostmask(pending[0])
             # [prefix,mask,duration,reason,klineMessage]
             ident = pending[1].split('@')[0]
-            mask = self.prefixToMask(irc,'%s!%s@%s' % (nick,ident,msg.args[2]))
+            h = msg.args[2]
+            if h == '255.255.255.255':
+               h = host
+            mask = self.prefixToMask(irc,'%s!%s@%s' % (nick,ident,h))
             if not self.registryValue('enable'):
                 self.logChannel(irc,"INFO: disabled, can't kline %s (%s)" % (mask,pending[3]))
                 if pending[1] in i.klines:
@@ -1502,11 +1505,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         i.klines[mask] = mask
         if "bc.googleusercontent.com" in prefix:
             reason = reason + ' !dnsbl Unknown spambot or drone'
-        if canKline or '/' in mask:
-            if '@gateway' in mask or '@nat/' in mask:
-                canKline = True
-            else:
-                canKline = False
+        if 'gateway/' in prefix:
+            canKline = True
+        self.log.info('CANKLINE %s %s %s' % (prefix,mask,canKline))
         if canKline:
             if not self.registryValue('enable'):
                 self.logChannel(irc,"INFO: disabled, can't kline %s (%s)" % (mask,reason))
@@ -2489,12 +2490,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
     def handleReportMessage (self,irc,msg):
         (targets, text) = msg.args
         nicks = self.registryValue('reportNicks')
-#        if msg.nick == 'Korobeiniki':
-#            if ' was found to be using VPNGate.' in text:
-#               ip = text.split('(')[1].split(')')[0]
-#               if utils.net.isIPV4(ip):
-#                   irc.sendMsg(ircmsgs.IrcMsg('KLINE %s %s :%s|%s' % (1440,'*@%s' % ip, "You've been temporarily blocked due to filtering problems. Sorry for the inconvenience! Mail kline@freenode.net with questions.",'VPNGate'))) 
-#                   self.logChannel(irc,'BAD: %s (VPNGate)' % (ip))
         if msg.nick in nicks:
             i = self.getIrc(irc)
             if text.startswith('BAD:') and not '(tor' in text and '(' in text:
@@ -3056,7 +3051,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             t.start()
                     else:
                         if len(self.registryValue('droneblKey')) and len(self.registryValue('droneblHost')) and self.registryValue('enable'):
-                            t = world.SupyThread(target=self.resolve,name=format('resolve %s', '*!*@%s' % ip),args=(irc,ip,'',True, reason))
+                            t = world.SupyThread(target=self.resolve,name=format('resolve %s', '*!*@%s' % ip),args=(irc,'*!*@%s' % ip,'',True, reason))
                             t.setDaemon(True)
                             t.start()
                         else:
