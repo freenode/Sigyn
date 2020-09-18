@@ -1047,23 +1047,31 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
     def _ip_ranges (self, h):
         if '/' in h:
-            if h.startswith('gateway/web/freenode/ip.'):
-               h = h.replace('gateway/web/freenode/ip.','')
-               return [ipaddress.ip_network('%s/27' % h, strict=False).with_prefixlen,ipaddress.ip_network('%s/26' % h, strict=False).with_prefixlen,ipaddress.ip_network('%s/25' % h, strict=False).with_prefixlen,ipaddress.ip_network('%s/24' % h, strict=False).with_prefixlen]
-            return [h]
+            # we've got a cloak
+            parts = h.split('/')
+            if parts[0] == 'gateway' and parts[-1].startswith('ip.'):
+                # we've got a dehexed gateway IP cloak
+                h = parts[-1].split('.', 1)[1]
+            else:
+                return [h]
+
         if utils.net.isIPV4(h):
-            return [ipaddress.ip_network('%s/27' % h, strict=False).with_prefixlen,ipaddress.ip_network('%s/26' % h, strict=False).with_prefixlen,ipaddress.ip_network('%s/25' % h, strict=False).with_prefixlen,ipaddress.ip_network('%s/24' % h, strict=False).with_prefixlen]
-        if utils.net.bruteIsIPV6(h):
-            r = []
-            r.append(ipaddress.ip_network('%s/120' % h, False).with_prefixlen)
-            r.append(ipaddress.ip_network('%s/118' % h, False).with_prefixlen)
-            r.append(ipaddress.ip_network('%s/116' % h, False).with_prefixlen)
-            r.append(ipaddress.ip_network('%s/114' % h, False).with_prefixlen)
-            r.append(ipaddress.ip_network('%s/112' % h, False).with_prefixlen)
-            r.append(ipaddress.ip_network('%s/110' % h, False).with_prefixlen)
-            r.append(ipaddress.ip_network('%s/64' % h, False).with_prefixlen)
-            return r
-        return [h]
+            prefixes = [27, 26, 25, 24]
+        elif utils.net.bruteIsIPV6(h):
+            # noteworthy IPv6 allocation information
+            # - linode assigns a /128 by default. can also offer /56, /64 & /116
+            # - xfinity (comcast) has been reported as offering /60
+            # - hurricane electric tunnel brokers get a /48
+
+            prefixes = [120, 118, 116, 114, 112, 110, 64, 60, 56, 48]
+        else:
+            return [h]
+
+        ranges = []
+        for prefix in prefixes:
+            range = ipaddress.ip_network('%s/%d' % (h, prefix), strict=False).with_prefixlen
+            ranges.append(range)
+        return ranges
 
     def resolve (self,irc,prefix,channel='',dnsbl=False,comment=False):
         (nick,ident,host) = ircutils.splitHostmask(prefix)
