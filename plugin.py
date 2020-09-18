@@ -494,8 +494,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 type = 17
             elif comment == 'DNS/MX type hostname detected on IRC':
                 type = 18
-            data = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><add ip='"+ip+"' type='+type+' comment='used by irc spam bot' /></request>"
-            r = requests.post(droneblHost,data=data,headers=headers).text
+            data = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><add ip='"+ip+"' type='"+str(type)+"' comment='used by irc spam bot' /></request>"
+            r = requests.post(droneblHost,data=data,headers=headers)
+            if r.status_code != 200:
+                self.logChannel(irc,'DNSBL: %s (add returned %s %s)' % (ip,r.status_code,r.reason))
             if comment:
                 self.logChannel(irc,'DNSBL: %s (%s,type:%s)' % (ip,comment,type))
             else:
@@ -1603,7 +1605,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         """<accountname> monitor account and kline it on sight
            during 24h, via extended-join, account-notify, account's name change"""
         i = self.getIrc(irc)
-        i.klinednicks.enqueue(text.lower())
+        account = text.lower().strip()
+        i.klinednicks.enqueue(account)
+        self.logChannel(irc,'SERVICE: %s lethaled for 24h by %s' % (account, msg.nick))
+        for channel in irc.state.channels:
+            if irc.isChannel(channel):
+               c = self.getChan(irc,channel)
+               for u in list(irc.state.channels[channel].users):
+                  if u in c.nicks:
+                      if len(c.nicks[u]) == 5:
+                          if c.nicks[u][4].lower() == account:
+                              self.ban(irc,u,c.nicks[u][1],c.nicks[u][2],self.registryValue('klineDuration'),'Lethaled account %s' % account,self.registryValue('klineMessage'),'BAD: %s (lethaled account %s)' % (account,c.nicks[u][1]),self.registryValue('killMessage'))
         irc.replySuccess()
     lethalaccount = wrap(lethalaccount,['owner','text'])
 
@@ -1931,17 +1943,22 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         if msg.nick == 'NickServ':
             src = text.split(' ')[0]
             target = ''
+            registering = True
+            grouping = False
             if ' GROUP:' in text:
+                grouping = True
                 target = text.split('(')[1].split(')')[0]
             elif 'SET:ACCOUNTNAME:' in text:
+                grouping = True
                 t = text.split('(')
                 if len(t) > 1:
                     target = text.split('(')[1].split(')')[0]
                 else:
                     return
             elif 'UNGROUP: ' in text:
+                grouping = True
                 target = text.split('UNGROUP: ')[1]
-            if len(target):
+            if len(target) and grouping:
                 q = self.getIrcQueueFor(irc,src,'nsAccountGroup',120)
                 q.enqueue(text)
         #        self.log.info('%s > %s (%s)' % (src,target,len(q)))
@@ -1961,7 +1978,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     #self.log.info('%s --> %s,%s,%s' % (src,a,b,c))
                     q.reset()
                     if a and b and c: 
-                        self.logChannel(irc,"SERVICE: %s suspicious evades/abuses (was %s)" % (src,oldAccount))
+                        self.logChannel(irc,"SERVICE: %s suspicious evades/abuses with GROUP/ACCOUNTNAME/UNGROUP (was %s)" % (src,oldAccount))
                         i = self.getIrc(irc)
                         oldAccount = oldAccount.lower()
                         for u in i.klinednicks:
@@ -2894,7 +2911,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             break
         if found:
             #i.klinednicks.enqueue(found.lower())
-            self.log.info ('kline account %s' % (found))
+            self.log.info ('klined account %s' % (found))
         if permit > -1:
             if '/' in host:
                 if host.startswith('gateway/') or host.startswith('nat/'):
