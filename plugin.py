@@ -372,15 +372,13 @@ class Pattern (object):
 
     def match (self,text):
         s = False
+        if isinstance(text,bytes):
+            text = str(text, "utf-8")
         if self._match:
             s = self._match.search (text) != None
         else:
             text = text.lower()
-            try:
-                s = self.pattern in text
-            except:
-                self.pattern = self.pattern.decode('utf-8')
-                s = self.pattern in text
+            s = self.pattern in text
         return s
 
     def __repr__(self):
@@ -701,7 +699,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         returns permanents patterns triggered by <text>"""
         i = self.getIrc(irc)
         patterns = []
-        text = text.encode('utf-8')
+        text = text.encode('utf-8').strip()
         for k in i.patterns:
             pattern = i.patterns[k]
             #self.log.info('%s : %s (%s)' % (pattern.uid,text,pattern.match(text)))
@@ -980,7 +978,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        self.log.info('klines found %s' % q)
                        if q.startswith(nick):
                           ip = q.split(' ')[1]
-                          self.logChannel(irc,'OP: [%s] %s asked for removal of %s (%s)' % (channel,msg.nick,ip,nick))
                           channels.append(channel)
                           if not isCloaked('%s!%s' % (nick,ip),self):
                               if self.registryValue('useOperServ'):
@@ -991,14 +988,17 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                                   if chan.patterns and len(chan.patterns):
                                       self.logChannel(irc,'PATTERN: [%s] removed %s tmp pattern by %s' % (channel,len(chan.patterns),msg.nick))
                                       chan.patterns.reset()
-                              irc.reply('The ban on %s has been lifted' % nick)
+                              self.logChannel(irc,'OP: [%s] %s unklined %s (%s)' % (channel,msg.nick,ip,nick))
+                              irc.reply('The ban on %s from %s has been lifted' % (nick,channel))
                           else:
+                              self.logChannel(irc,'OP: [%s] %s asked for removal of %s (%s)' % (channel,msg.nick,ip,nick))
                               irc.reply(self.registryValue('msgInviteConfirm'))
                ops.append(channel)
-       if len(ops) and not len(channels):
-           irc.replyError("'%s' does not match any recent bans from %s" % (nick,', '.join(ops)))
+       if len(ops):
+           if not len(channels):
+               irc.replyError("'%s' does not match any recent bans from %s" % (nick,', '.join(ops)))
        else:
-           irc.noReply("Only **Opped** channel operators of the channel the ban originated in can remove k-lines. If you have any questions, contact freenode staff (#freenode)")
+           irc.replyError("Only **Opped** channel operators of the channel the ban originated in can remove k-lines. If you have any questions, contact freenode staff (#freenode-sigyn)")
     unkline = wrap(unkline,['private','text'])
 
 
@@ -1418,6 +1418,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if aa == u:
                         self.logChannel(irc,"SERVICE: %s (%s) evades a kline from the last 24h (account-notify)" % (msg.prefix,acc))
                         src = msg.nick
+                        i.klinednicks.enqueue(acc)
                         if not src in i.tokline:
                             i.toklineresults[src] = {}
                             i.toklineresults[src]['kind'] = 'evade'
@@ -1511,12 +1512,16 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
             klineMessage = self.registryValue('klineMessage')
         if '"' in klineMessage:
             klineMessage = self.registryValue('klineMessage')
-        canKline = not self.registryValue('useWhoWas')
+        canKline = True
         i.klines[mask] = mask
         if "bc.googleusercontent.com" in prefix:
             reason = reason + ' !dnsbl Unknown spambot or drone'
-        if 'gateway/' in prefix:
-            canKline = True
+        if ircutils.isUserHostmask(prefix):
+           canKline = not self.registryValue('useWhoWas')
+           if i.defcon or 'gateway/' in prefix:
+               canKline = True
+        else:
+            self.log.info('INVALID PREFIX %s : %s : %s' % (prefix,mask,reason))
         self.log.info('CANKLINE %s %s %s' % (prefix,mask,canKline))
         if canKline:
             if not self.registryValue('enable'):
@@ -1622,7 +1627,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                for u in list(irc.state.channels[channel].users):
                   if u in c.nicks:
                       if len(c.nicks[u]) == 5:
-                          if c.nicks[u][4].lower() == account:
+                          if c.nicks[u][4] and c.nicks[u][4].lower() == account:
                               self.ban(irc,u,c.nicks[u][1],c.nicks[u][2],self.registryValue('klineDuration'),'Lethaled account %s' % account,self.registryValue('klineMessage'),'BAD: %s (lethaled account %s)' % (account,c.nicks[u][1]),self.registryValue('killMessage'))
         irc.replySuccess()
     lethalaccount = wrap(lethalaccount,['owner','text'])
@@ -1993,7 +1998,6 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             if u == oldAccount:
                                 self.logChannel(irc,"SERVICE: %s was klined today on (%s), enforcing" % (src,oldAccount))
                                 i.klinednicks.enqueue(src)
-                                 
                                 if not src in i.tokline:
                                     i.toklineresults[src] = {}
                                     i.toklineresults[src]['kind'] = 'evade'
@@ -2183,11 +2187,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     elif chan.buffers[kind][key].timeout != life:
                         chan.buffers[kind][key].setTimeout(life)
                     chan.buffers[kind][key].enqueue(key)
-                    if not isIgnored and isNew and i.defcon and len(chan.buffers[kind][key]) == 1 and text.startswith('http') and not i.netsplit and time.time()-chan.nicks[msg.nick][0] < 90:
-                        publicreason = 'link spam once joined'
-                        reason = 'linkspam'
-                        if self.hasAbuseOnChannel(irc,channel,'joinSpamPart'):
-                            isIgnored = False
+                    #if not isIgnored and isNew and i.defcon and len(chan.buffers[kind][key]) == 1 and text.startswith('http') and not i.netsplit and time.time()-chan.nicks[msg.nick][0] < 90:
+                    #    publicreason = 'link spam once joined'
+                    #    reason = 'linkspam'
+                    #    if self.hasAbuseOnChannel(irc,channel,'joinSpamPart'):
+                    #        isIgnored = False
                         
                 badunicode = False
                 flag = ircdb.makeChannelCapability(channel,'badunicode')
@@ -3624,6 +3628,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if aa == u:
                         self.logChannel(irc,"SERVICE: %s (%s) evades a kline from the last 24h (extended-join %s)" % (msg.prefix,account,msg.args[0]))
                         src = msg.nick
+                        i.klinednicks.enqueue(account)
                         if not src in i.tokline:
                             i.toklineresults[src] = {}
                             i.toklineresults[src]['kind'] = 'evade'
