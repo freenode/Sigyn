@@ -102,6 +102,11 @@ conf.registerGlobalValue(Sigyn, 'decloakPermit',
 conf.registerGlobalValue(Sigyn, 'decloakLife',
     registry.PositiveInteger(1,"""duration of stored akick add/del in seconds"""))
 
+conf.registerGlobalValue(Sigyn, 'banPermit',
+     registry.Integer(-1, """-1 to disable, number of ban/quiet allowed during banLife"""))
+conf.registerGlobalValue(Sigyn, 'banLife',
+     registry.PositiveInteger(1, """duration of ban computation, used to alert that someone is collecting bans"""))
+
 conf.registerGlobalValue(Sigyn, 'lagPermit',
      registry.Integer(-1, """max lag allowed in seconds, otherwise entering netsplit mode"""))
 conf.registerGlobalValue(Sigyn, 'lagInterval',
