@@ -494,6 +494,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                 type = 17
             elif comment == 'DNS/MX type hostname detected on IRC':
                 type = 18
+            elif comment == "Abused VPN Service":
+                type = 19
             data = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><add ip='"+ip+"' type='"+str(type)+"' comment='used by irc spam bot' /></request>"
             r = requests.post(droneblHost,data=data,headers=headers)
             if r.status_code != 200:
