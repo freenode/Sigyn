@@ -190,7 +190,7 @@ class Ircd (object):
         self.nicks = {}
         self.domains = {}
         self.cleandomains = {}
-        self.klinednicks = utils.structures.TimeoutQueue(86400)
+        self.klinednicks = utils.structures.TimeoutQueue(86400*2)
         self.lastKlineOper = ''
         try:
             with open('plugins/Sigyn/domains.txt', 'r') as content_file:
@@ -399,6 +399,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
         self.starting = world.starting
         self.recaps = re.compile("[A-Z]")
         self.ipfiltered = {}
+        self.rmrequestors = {}
         self.spamchars = {'Ḕ', 'Î', 'Ù', 'Ṋ', 'ℰ', 'Ừ', 'ś', 'ï', 'ℯ', 'ļ', 'ẋ', 'ᾒ', 'ἶ', 'ệ', 'ℓ', 'Ŋ', 'Ḝ', 'ξ', 'ṵ', 'û', 'ẻ', 'Ũ', 'ṡ', '§', 'Ƚ', 'Š', 'ᶙ', 'ṩ', '¹', 'ư', 'Ῐ', 'Ü', 'ŝ', 'ὴ', 'Ș', 'ũ', 'ῑ', 'ⱷ', 'Ǘ', 'Ɇ', 'ĭ', 'ἤ', 'Ɲ', 'Ǝ', 'ủ', 'µ', 'Ỵ', 'Ű', 'ū', 'į', 'ἳ', 'ΐ', 'ḝ', 'Ɛ', 'ṇ', 'È', 'ῆ', 'ử', 'Ň', 'υ', 'Ǜ', 'Ἔ', 'Ὑ', 'μ', 'Ļ', 'ů', 'Ɫ', 'ŷ', 'Ǚ', 'ἠ', 'Ĺ', 'Ę', 'Ὲ', 'Ẍ', 'Ɣ', 'Ϊ', 'ℇ', 'ẍ', 'ῧ', 'ϵ', 'ἦ', 'ừ', 'ṳ', 'ᾕ', 'ṋ', 'ù', 'ῦ', 'Ι', 'ῠ', 'ṥ', 'ὲ', 'ê', 'š', 'ě', 'ề', 'ẽ', 'ī', 'Ė', 'ỷ', 'Ủ', 'ḯ', 'Ἓ', 'Ὓ', 'Ş', 'ύ', 'Ṧ', 'Ŷ', 'ἒ', 'ἵ', 'ė', 'ἰ', 'ẹ', 'Ȇ', 'Ɏ', 'Ί', 'ὶ', 'Ε', 'ḛ', 'Ὤ', 'ǐ', 'ȇ', 'ἢ', 'í', 'ȕ', 'Ữ', '＄', 'ή', 'Ṡ', 'ἷ', 'Ḙ', 'Ὢ', 'Ṉ', 'Ľ', 'ῃ', 'Ụ', 'Ṇ', 'ᾐ', 'Ů', 'Ἕ', 'ý', 'Ȅ', 'ᴌ', 'ύ', 'ņ', 'ὒ', 'Ý', 'ế', 'ĩ', 'ǘ', 'Ē', 'ṹ', 'Ư', 'é', 'Ÿ', 'ΰ', 'Ὦ', 'Ë', 'ỳ', 'ἓ', 'ĕ', 'ἑ', 'ṅ', 'ȗ', 'Ν', 'ί', 'ể', 'ᴟ', 'è', 'ᴇ', 'ḭ', 'ȝ', 'ϊ', 'ƪ', 'Ὗ', 'Ų', 'Ề', 'Ṷ', 'ü', 'Ɨ', 'Ώ', 'ň', 'ṷ', 'ƞ', 'Ȗ', 'ș', 'ῒ', 'Ś', 'Ự', 'Ń', 'Ἳ', 'Ứ', 'Ἷ', 'ἱ', 'ᾔ', 'ÿ', 'Ẽ', 'ὖ', 'ὑ', 'ἧ', 'Ὥ', 'ṉ', 'Ὠ', 'ℒ', 'Ệ', 'Ὼ', 'Ẻ', 'ḙ', 'Ŭ', '₴', 'Ὡ', 'ȉ', 'Ṅ', 'ᵪ', 'ữ', 'Ὧ', 'ń', 'Ἐ', 'Ú', 'ɏ', 'î', 'Ⱡ', 'Ƨ', 'Ě', 'ȿ', 'ᴉ', 'Ṩ', 'Ê', 'ȅ', 'ᶊ', 'Ṻ', 'Ḗ', 'ǹ', 'ᴣ', 'ş', 'Ï', 'ᾗ', 'ự', 'ὗ', 'ǔ', 'ᶓ', 'Ǹ', 'Ἶ', 'Ṳ', 'Ʊ', 'ṻ', 'Ǐ', 'ᵴ', 'ῇ', 'Ẹ', 'Ế', 'Ϋ', 'Ū', 'Ῑ', 'ί', 'ỹ', 'Ḯ', 'ǀ', 'Ὣ', 'Ȳ', 'ǃ', 'ų', 'ϴ', 'Ώ', 'Í', 'ì', 'ι', 'ῄ', 'ΰ', 'ἣ', 'ῡ', 'Ἒ', 'Ḽ', 'Ȉ', 'Έ', 'ἴ', 'ᶇ', 'ἕ', 'ǚ', 'Ī', 'Έ', '¥', 'Ṵ', 'ὔ', 'Ŝ', 'ῢ', 'Ἱ', 'ű', 'Ḷ', 'Ὶ', 'ḗ', 'ᴜ', 'ę', 'ὐ', 'Û', 'ᾑ', 'Ʋ', 'Ἑ', 'Ì', 'ŋ', 'Ḛ', 'ỵ', 'Ễ', '℮', '×', 'Ῠ', 'Ἵ', 'Ύ', 'Ử', 'ᴈ', 'ē', 'Ἰ', 'ᶖ', 'ȳ', 'Ǯ', 'ὓ', 'ὕ', 'ῂ', 'Ĕ', 'É', 'ᾓ', 'Ḻ', 'Ņ', 'ἥ', 'ḕ', 'ὺ', 'Ȋ', 'ı', 'Ȕ', 'ṧ', 'ᾖ', 'Ί', 'ΐ', '€', 'Ḭ', 'Ƴ', 'ȵ', 'Ṹ', 'Ñ', 'Ƞ', 'Ȩ', 'ῐ', 'ứ', 'έ', 'ł', 'ŭ', '϶', 'ƴ', '₤', 'ƨ', '£', 'Ł', 'ñ', 'ë', 'ễ', 'ǯ', 'ᶕ', 'ή', 'ᶔ', 'Π', 'ȩ', 'ἐ', 'Ể', 'ε', 'Ĩ', 'ǜ', 'Į', 'Ξ', 'Ḹ', 'Ῡ', '∩', 'ú', 'Χ', 'ụ'}
 
     def removeDnsbl (self,irc,ip,droneblHost,droneblKey):
@@ -413,6 +414,9 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     id = id.split('"')[0]
                     if line.find('type="18"') != -1:
                         self.logChannel(irc,'RMDNSBL: %s (%s) not removed: is type 18' % (ip,id))
+                        if ip in self.rmrequestors:
+                            irc.queueMsg(ircmsgs.privmsg(self.rmrequestors[ip],'%s (%s) not removed: is type 18' % (ip,id)))
+                            del self.rmrequestors[ip]
                         continue
                     data = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><remove id='"+id+"' /></request>"
                     found = True
@@ -421,18 +425,32 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                         response = r.text.replace('\n','')
                         if "You are not authorized to remove this incident" in response:
                             self.logChannel(irc,'RMDNSBL: %s (%s) failed: You are not authorized to remove this incident' % (ip,id))
+                            if ip in self.rmrequestors:
+                                irc.queueMsg(ircmsgs.privmsg(self.rmrequestors[ip],'%s (%s) not removed: You are not authorized to remove this incident' % (ip,id)))
+                                del self.rmrequestors[ip]
                         else:
                             self.logChannel(irc,'RMDNSBL: %s (%s) removed' % (ip,id))
+                            if ip in self.rmrequestors:
+                                irc.queueMsg(ircmsgs.privmsg(self.rmrequestors[ip],'%s (%s) removed' % (ip,id)))
+                                del self.rmrequestors[ip]
                     except:
                         self.logChannel(irc,'RMDNSBL: %s (%s) failed: unknown error' % (ip,id))
+                        if ip in self.rmrequestors:
+                            irc.queueMsg(ircmsgs.privmsg(self.rmrequestors[ip],'%s (%s) not removed: unknown error' % (ip,id)))
+                            del self.rmrequestors[ip]
             if not found:
                 self.logChannel(irc,'RMDNSBL: %s (none) not removed: no listing found' % ip)
+                if ip in self.rmrequestors:
+                    irc.queueMsg(ircmsgs.privmsg(self.rmrequestors[ip],'%s (%s) not removed: no listing found' % (ip,id)))
+                    del self.rmrequestors[ip]
         data = "<?xml version=\"1.0\"?><request key='"+droneblKey+"'><lookup ip='"+ip+"' /></request>"
         r = requests.post(droneblHost,data=data,headers=headers)
         if r.status_code == 200:
             check(r.text)
         else:
             self.logChannel(irc,'RMDNSBL: %s (unknown) failed: status code %s' % (ip,r.status_code))
+            if ip in self.rmrequestors:
+                irc.queueMsg(ircmsgs.privmsg(self.rmrequestors[ip],'%s (unknown) not removed: status code %s' % (ip,r.status_code)))
 
     def fillDnsbl (self,irc,ip,droneblHost,droneblKey,comment=None):
         headers = {
@@ -829,6 +847,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
            remove <ips> from dronebl"""
         for ip in ips:
             if utils.net.isIPV4(ip) or utils.net.bruteIsIPV6(ip):
+                self.rmrequestors[ip] = msg.nick
                 t = world.SupyThread(target=self.removeDnsbl,name=format('rmDnsbl %s', ip),args=(irc,ip,self.registryValue('droneblHost'),self.registryValue('droneblKey')))
                 t.setDaemon(True)
                 t.start()
@@ -3004,15 +3023,11 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                             self.logChannel(irc,'NOTE: %s (%s) (%s/%ss)' % (h,'SASL failures',limit,life))
 
     def warnedOnOtherChannel (self,irc,channel,mask):
-        found = False
-        kinds = ['massRepeat','lowMassRepeat','repeat','lowRepeat','hilight','lowHilight','flood','lowFlood','ctcp','notice','cap']
         for chan in list(irc.state.channels):
             if chan != channel:
-                for k in kinds:
-                    found = self.isBadOnChannel(irc,channel,k,mask)
-                    if found:
-                        return found
-        return found
+                if self.hasAbuseOnChannel(irc,chan,mask):
+                    return True
+        return False
 
     def hasAbuseOnChannel (self,irc,channel,key):
         chan = self.getChan(irc,channel)
