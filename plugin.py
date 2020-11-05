@@ -3618,6 +3618,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                     if reason == 'Changing Host' or i.netsplit:
                         continue
                     bad = False
+                    if len(reason) and 'Kicked by @appservice-irc:matrix.org' in reason:
+                        continue
                     flag = ircdb.makeChannelCapability(channel, 'cycle')
                     if ircdb.checkCapability(msg.prefix, flag):
                         bad = self.isBadOnChannel(irc,channel,'cycle',mask)
