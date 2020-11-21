@@ -1806,49 +1806,35 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
        resolver = dns.resolver.Resolver()
        resolver.timeout = 10
        resolver.lifetime = 10
-       found = ''
-       items = self.registryValue('mxbl')
-       for item in items:
-           if email in item:
-               found = item
-               break
+       found = None
+
+       mxbl = set(self.registryValue('mxbl'))
        i = self.getIrc(irc)
-       if email in i.domains:
+       if (email in mxbl or
+               email in i.domains):
            found = email
-       ips = None
-       if not len(found):
-           try:
-               ips = resolver.query(email,'MX')
-           except:
-               ips = None
-       if ips:
-           for ip in ips:
-               ip = '%s' % ip
-               ip = ip.split(' ')[1][:-1]
-               for item in items:
-                   if ip in item:
-                       found = item
-                       break
-               if len(found):
-                   break
-               q = None
+       else:
+           to_resolve = [(email,'A'), (email,'MX')]
+           while to_resolve:
+               domain, type = to_resolve.pop(0)
                try:
-                   q = resolver.query(ip,'A')
+                   res = resolver.query(domain, type)
                except:
-                   q = None
-               if q:
-                   for i in q:
-                       i = '%s' % i
-                       for item in items:
-                           if i in item:
-                               found = ip
-                               break
-                       if len(found):
+                   pass
+               else:
+                   for record in res:
+                       record = record.to_text()
+
+                       if type == 'MX':
+                           # these come out like '10 mx.example.com'
+                           record = record.split(" ", 1)[1]
+                           to_resolve.append((record, 'A'))
+
+                       if record in mxbl:
+                           found = record
                            break
-               if len(found):
-                   break
-       i = self.getIrc(irc)
-       if len(found):
+
+       if found is not None:
            i.mx[account] = [email,badmail,found,freeze]
            if badmail and len(email):
                irc.queueMsg(ircmsgs.IrcMsg('PRIVMSG NickServ :BADMAIL ADD *@%s %s' % (email,found)))
