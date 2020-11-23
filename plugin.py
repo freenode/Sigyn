@@ -1814,7 +1814,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                email in i.domains):
            found = email
        else:
-           to_resolve = [(email,'A'), (email,'MX')]
+           to_resolve = [(email,'MX'), (email,'A'), (email,'AAAA')]
            while to_resolve:
                domain, type = to_resolve.pop(0)
                try:
@@ -1828,7 +1828,10 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        if type == 'MX':
                            # these come out like '10 mx.example.com'
                            record = record.split(" ", 1)[1]
-                           to_resolve.append((record, 'A'))
+                           # MX records (and their A records) are what we match on most,
+                           # so doing .insert(0, ...) means they're checked first
+                           to_resolve.insert(0, (record, 'A'))
+                           to_resolve.insert(0, (record, 'AAAA'))
 
                        if record in mxbl:
                            found = record
