@@ -1836,6 +1836,8 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
                        if record in mxbl:
                            found = record
                            break
+                   if found is not None:
+                       break
 
        if found is not None:
            i.mx[account] = [email,badmail,found,freeze]
