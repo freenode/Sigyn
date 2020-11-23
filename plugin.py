@@ -188,19 +188,9 @@ class Ircd (object):
         self.dlines = []
         self.invites = {}
         self.nicks = {}
-        self.domains = {}
         self.cleandomains = {}
         self.klinednicks = utils.structures.TimeoutQueue(86400*2)
         self.lastKlineOper = ''
-        try:
-            with open('plugins/Sigyn/domains.txt', 'r') as content_file:
-                file = content_file.read()
-                for line in file.split('\n'):
-                    if line.startswith('- '):
-                        for word in line.split('- '):
-                            self.domains[word.strip().replace("'",'')] = word.strip().replace("'",'')
-        except:
-            pass
 
     def __repr__(self):
         return '%s(patterns=%r, queues=%r, channels=%r, pending=%r, logs=%r, limits=%r, whowas=%r, klines=%r)' % (self.__class__.__name__,
@@ -1810,8 +1800,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
        mxbl = set(self.registryValue('mxbl'))
        i = self.getIrc(irc)
-       if (email in mxbl or
-               email in i.domains):
+       if email.lower() in mxbl:
            found = email
        else:
            to_resolve = [(email,'A'), (email,'MX')]
@@ -1827,7 +1816,7 @@ class Sigyn(callbacks.Plugin,plugins.ChannelDBHandler):
 
                        if type == 'MX':
                            # these come out like '10 mx.example.com'
-                           record = record.split(" ", 1)[1]
+                           record = record.split(" ", 1)[1].lower()
                            to_resolve.append((record, 'A'))
 
                        if record in mxbl:
