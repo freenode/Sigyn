@@ -35,4 +35,4 @@ We enforce the
 [Contributor Covenant, version 1.4](https://www.contributor-covenant.org/version/1/4/code-of-conduct.html),
 which can be summed up as: Be respectful to everyone, and act in a constructive,
 professional manner towards everyone. If you feel someone is violating the Code
-of Conduct, please PM me (emerson) on IRC, or email me at emerson@freenode.net.
+of Conduct, please PM me (niko) on IRC, or email me at niko@freenode.net.
